@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Dance Studio</title>
+  <meta name="description" content="Choreograph formations on a 3D stage. Add dancers any time, set formations on a timeline, and play it back to music." />
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/" } }
+  </script>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/icon.svg" alt="" width="26" height="26" />
+        <span class="brand-name">Dance Studio</span>
+      </div>
+      <span class="divider"></span>
+      <input id="title" class="title-input" spellcheck="false" aria-label="Dance title" />
+      <span id="saved" class="saved">Saved</span>
+
+      <div class="topbar-right">
+        <button class="icon-btn only-narrow" data-action="toggle-roster" title="Formations"><i data-icon="sliders"></i></button>
+        <button class="icon-btn only-narrow" data-action="toggle-inspector" title="Cast"><i data-icon="users"></i></button>
+        <button class="icon-btn" data-action="undo" title="Undo (⌘Z)"><i data-icon="undo"></i></button>
+        <button class="icon-btn" data-action="redo" title="Redo (⇧⌘Z)"><i data-icon="redo"></i></button>
+        <span class="divider"></span>
+        <button class="btn ghost" data-action="library"><i data-icon="folder"></i><span class="hide-sm">My dances</span></button>
+        <div class="menu-wrap">
+          <button class="btn ghost" data-action="menu-file"><i data-icon="more"></i></button>
+          <div class="menu" id="menu-file" hidden>
+            <button data-action="new"><i data-icon="plus"></i>New dance</button>
+            <button data-action="duplicate-dance"><i data-icon="copy"></i>Duplicate dance</button>
+            <hr />
+            <button data-action="export"><i data-icon="download"></i>Export .json</button>
+            <button data-action="import"><i data-icon="upload"></i>Import .json</button>
+            <hr />
+            <button data-action="help"><i data-icon="help"></i>Shortcuts</button>
+          </div>
+        </div>
+        <button class="btn primary" data-action="share"><i data-icon="share"></i><span class="hide-sm">Share</span></button>
+      </div>
+    </header>
+
+    <!-- Left: storyboard of formations -->
+    <aside class="panel storyboard" id="storyboard">
+      <div class="panel-head">
+        <h2>Formations <span class="count" id="formation-count">0</span></h2>
+        <button class="btn small" data-action="add-formation" title="New formation from the current one (F)"><i data-icon="plus"></i>New</button>
+      </div>
+      <ol class="fb-list" id="fb-list"></ol>
+    </aside>
+
+    <!-- Center: stage -->
+    <main class="stage-wrap" id="stage-wrap">
+      <div class="stage" id="stage"></div>
+      <div class="labels" id="labels"></div>
+      <div class="marquee" id="marquee" hidden></div>
+
+      <div class="stage-toolbar">
+        <div class="seg" role="tablist" aria-label="View">
+          <button data-view="3d" class="on">3D</button>
+          <button data-view="top">Top</button>
+        </div>
+        <div class="toggles">
+          <button class="chip on" data-toggle="paths" title="Show paths from the previous formation">Paths</button>
+          <button class="chip on" data-toggle="grid">Grid</button>
+          <button class="chip on" data-toggle="labels">Names</button>
+          <button class="chip on" data-toggle="snap" title="Snap to a 0.25 m grid">Snap</button>
+        </div>
+      </div>
+      <button class="minimap" id="minimap" title="Top view — click to switch"><svg id="minimap-svg" viewBox="0 0 200 140" aria-label="Top-down map of the stage"></svg><span>Top view</span></button>
+      <button class="icon-btn floating recenter" data-action="recenter" title="Reset camera"><i data-icon="target"></i></button>
+      <div class="stage-hint" id="stage-hint">Drag dancers to move · Shift-click to add · Drag the floor to box-select · Right-drag or ⌥-drag to orbit</div>
+      <div class="audience-tag">Audience</div>
+    </main>
+
+    <!-- Right: cast + inspector -->
+    <aside class="panel inspector" id="inspector">
+      <section class="cast">
+        <div class="panel-head">
+          <h2>Cast <span class="count" id="dancer-count">0</span></h2>
+          <div class="btn-row">
+            <button class="btn small ghost" data-action="select-all">All</button>
+            <button class="btn small" data-action="add-dancer" title="Add dancer (N)"><i data-icon="plus"></i>Add</button>
+          </div>
+        </div>
+        <ul class="dancer-list" id="dancer-list"></ul>
+      </section>
+      <div id="insp"></div>
+    </aside>
+
+    <!-- Bottom: timeline -->
+    <section class="timeline" id="timeline">
+      <div class="tl-head">
+        <button class="play" data-action="play" title="Play / pause (Space)"><i data-icon="play"></i></button>
+        <button class="icon-btn" data-action="prev-formation" title="Previous formation ([)"><i data-icon="skip-back"></i></button>
+        <button class="icon-btn" data-action="next-formation" title="Next formation (])"><i data-icon="skip-fwd"></i></button>
+        <div class="time"><span id="time-now">0:00.0</span><span class="time-total"> / <span id="time-total">0:00</span></span></div>
+        <div class="tl-spacer"></div>
+        <div class="music" id="music"></div>
+        <div class="zoom">
+          <button class="icon-btn" data-action="zoom-out" title="Zoom out"><i data-icon="minus"></i></button>
+          <button class="icon-btn" data-action="zoom-in" title="Zoom in"><i data-icon="plus"></i></button>
+        </div>
+      </div>
+      <div class="tl-body" id="tl-body">
+        <div class="tl-inner" id="tl-inner">
+          <div class="ruler" id="ruler"></div>
+          <div class="track formations-track" id="formations-track"></div>
+          <div class="track music-track" id="music-track"><canvas id="wave"></canvas><div class="music-empty" id="music-empty">No music yet. Add a song to play along, or just use the clock.</div></div>
+          <div class="playhead" id="playhead"><span></span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Library modal -->
+  <dialog class="modal" id="library">
+    <div class="modal-head">
+      <h2>My dances</h2>
+      <button class="icon-btn" data-close><i data-icon="x"></i></button>
+    </div>
+    <div class="lib-grid" id="lib-grid"></div>
+    <p class="modal-note">Dances are saved in this browser. Export a .json file or share a link to move them elsewhere.</p>
+  </dialog>
+
+  <!-- Help modal -->
+  <dialog class="modal small" id="help">
+    <div class="modal-head">
+      <h2>Shortcuts</h2>
+      <button class="icon-btn" data-close><i data-icon="x"></i></button>
+    </div>
+    <dl class="keys">
+      <dt><kbd>Space</kbd></dt><dd>Play / pause</dd>
+      <dt><kbd>N</kbd></dt><dd>Add a dancer</dd>
+      <dt><kbd>F</kbd></dt><dd>New formation from the current one</dd>
+      <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Previous / next formation</dd>
+      <dt><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></dt><dd>Nudge selected dancers (hold Shift for 1 m)</dd>
+      <dt><kbd>⌘A</kbd></dt><dd>Select all dancers</dd>
+      <dt><kbd>Delete</kbd></dt><dd>Remove selected dancers</dd>
+      <dt><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></dt><dd>Undo / redo</dd>
+      <dt><kbd>T</kbd></dt><dd>Toggle 3D / top view</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Clear selection</dd>
+      <dt>Double-click path dot</dt><dd>Straighten a curved path</dd>
+      <dt><kbd>⌘</kbd> + scroll</dt><dd>Zoom the timeline</dd>
+    </dl>
+  </dialog>
+
+  <input type="file" id="file-json" accept=".json,application/json" hidden />
+  <input type="file" id="file-audio" accept="audio/*" hidden />
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

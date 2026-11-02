@@ -24,4 +24,4 @@ Static site, no build step:
 python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
-three.js r170 is vendored in `vendor/`.
+three.js r170 (minified) is vendored in `vendor/`.
