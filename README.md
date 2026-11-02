@@ -9,8 +9,11 @@ A choreography tool for planning formations on a 3D stage — the redesign of my
 - **Storyboard of formations** — each card is one moment; reorder by dragging, set how long each is held and how long the move into the next takes.
 - **Real figures, not cubes** — lit 3D dancers that walk between formations and turn to face where they're going.
 - **Any number of dancers, any time** — add or remove dancers whenever; mark someone offstage in a formation for entrances and exits.
-- **Paths** — every move is drawn from where the dancer was; reshape a dancer's path on the stage.
-- **Per-dancer timing** — choose when each dancer leaves and arrives within a move, and their pace.
+- **Counts, not seconds** — everything is in 8-counts: set the BPM (or tap it), line up count 1 with the music, optional metronome. Changing tempo keeps every hold and move the same number of counts.
+- **Paths** — select a dancer and drag the dots on their path: hollow ○ adds a bend, solid ● moves it, double-click removes it.
+- **Rhythm per count** — each move has a strip with one cell per count; set each count to Hold, Slow, Medium or Fast (e.g. slow 2, fast 4, slow 2). Presets for Even, Slow–fast–slow, Wait then go, and more; Ripple for canons.
+- **Travel styles** — Walk, Run, Chassé, Turn, Leap, Floor, and which way dancers face while moving. The mannequins perform them.
+- **Count sheets** — write what happens on each count per formation (“1-4 arm sweep”), for everyone or specific dancers. Lines show as captions during playback.
 - **Pairs & groups** — partner dancers up so they share one color (matching or shades).
 - **Shapes** — Line, Two rows, V, Circle, Diagonal, Grid, Diamond, Arc, Spiral; Mirror, Tighter, Wider.
 - **Music** — add a song, see its waveform, play the dance in sync.

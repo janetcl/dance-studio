@@ -22,9 +22,45 @@ export function localProgress(tm, u) {
   const s = tm?.s ?? 0, e = tm?.e ?? 1;
   return e - s < 1e-3 ? (u >= e ? 1 : 0) : Math.max(0, Math.min(1, (u - s) / (e - s)));
 }
+// Rhythm: tm.w = one speed per count (0 hold, 1 slow, 2 medium, 3 fast).
+// Progress along the path is the running share of "effort" spent so far.
+export const SPEEDS = ['Hold', 'Slow', 'Medium', 'Fast'];
+export function rhythmProgress(w, u) {
+  const n = w.length, total = w.reduce((a, b) => a + b, 0);
+  if (!n || !total) return u >= 1 ? 1 : 0;
+  const x = Math.max(0, Math.min(1, u)) * n;
+  const k = Math.min(n - 1, Math.floor(x));
+  let before = 0;
+  for (let i = 0; i < k; i++) before += w[i];
+  return Math.min(1, (before + w[k] * (x - k)) / total);
+}
+export function speedAt(tm, u) {
+  if (!tm?.w) { const l = localProgress(tm, u); return l > 0 && l < 1 ? 2 : 0; }
+  const n = tm.w.length;
+  return tm.w[Math.min(n - 1, Math.floor(Math.max(0, Math.min(0.9999, u)) * n))];
+}
 export function dancerProgress(tm, u) {
+  if (tm?.w) return rhythmProgress(tm.w, u);
   return (PACES[tm?.pace] || PACES.smooth).fn(localProgress(tm, u));
 }
+export function resample(w, n) {
+  if (!w || !w.length) return Array(n).fill(2);
+  return Array.from({ length: n }, (_, i) => w[Math.min(w.length - 1, Math.floor((i / n) * w.length))]);
+}
+// Old-style timing (leave/arrive window) → per-count rhythm
+export function toRhythm(tm, n) {
+  if (tm?.w) return resample(tm.w, n);
+  const s = tm?.s ?? 0, e = tm?.e ?? 1;
+  return Array.from({ length: n }, (_, i) => ((i + 0.5) / n >= s && (i + 0.5) / n <= e ? 2 : 0));
+}
+export const RHYTHM_PRESETS = {
+  even: { label: 'Even', fn: (n) => Array(n).fill(2) },
+  sfs: { label: 'Slow–fast–slow', fn: (n) => Array.from({ length: n }, (_, i) => (i < n / 4 || i >= n - n / 4 ? 1 : 3)) },
+  wait: { label: 'Wait, then go', fn: (n) => Array.from({ length: n }, (_, i) => (i < n / 2 ? 0 : 3)) },
+  early: { label: 'Go, then wait', fn: (n) => Array.from({ length: n }, (_, i) => (i < n / 2 ? 3 : 0)) },
+  accel: { label: 'Speed up', fn: (n) => Array.from({ length: n }, (_, i) => 1 + Math.floor((i / n) * 3)) },
+  decel: { label: 'Slow down', fn: (n) => Array.from({ length: n }, (_, i) => 3 - Math.floor((i / n) * 3)) },
+};
 
 // How a dancer travels during a move. Stored on the destination pos entry as tr: { style, facing }.
 export const STYLES = {
@@ -36,7 +72,7 @@ export const STYLES = {
   floor: { label: 'Floor' },
 };
 export const FACINGS = {
-  travel: { label: 'Where they go' },
+  travel: { label: 'Ahead' },
   front: { label: 'Audience' },
   back: { label: 'Upstage' },
 };
@@ -210,7 +246,7 @@ export function duplicateFormation(d, i) {
     id: uid(), name: nextName(d, src.name), hold: src.hold, transition: src.transition,
     pos: JSON.parse(JSON.stringify(src.pos)), notes: [],
   };
-  for (const id in f.pos) { delete f.pos[id].h; delete f.pos[id].tm; delete f.pos[id].tr; } // plain walk into the new one
+  for (const id in f.pos) { delete f.pos[id].h; delete f.pos[id].wp; delete f.pos[id].tm; delete f.pos[id].tr; } // plain walk into the new one
   d.formations.splice(i + 1, 0, f);
   return i + 1;
 }
@@ -249,13 +285,47 @@ export function locate(d, t) {
   return { i, phase: 'move', u: clamp((t - s.holdEnd) / Math.max(f.transition, 1e-3), 0, 1) };
 }
 
-// Quadratic bezier through p0 → p1, where h is the offset of the curve's midpoint.
-export function pathPoint(p0, p1, h, u) {
-  if (!h || (!h.x && !h.z)) return { x: p0.x + (p1.x - p0.x) * u, z: p0.z + (p1.z - p0.z) * u };
-  const cx = (p0.x + p1.x) / 2 + 2 * h.x, cz = (p0.z + p1.z) / 2 + 2 * h.z;
-  const a = (1 - u) * (1 - u), b = 2 * (1 - u) * u, c = u * u;
-  return { x: a * p0.x + b * cx + c * p1.x, z: a * p0.z + b * cz + c * p1.z };
+// Paths: a dancer travels from a → b through optional waypoints (b.wp), on a smooth curve.
+export function controlPts(a, b, p) {
+  if (p?.wp?.length) return [a, ...p.wp, b];
+  if (p?.h && (p.h.x || p.h.z)) return [a, { x: (a.x + b.x) / 2 + p.h.x, z: (a.z + b.z) / 2 + p.h.z }, b];
+  return [a, b];
 }
+function catmull(p0, p1, p2, p3, t) {
+  const t2 = t * t, t3 = t2 * t;
+  const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+  return { x: f(p0.x, p1.x, p2.x, p3.x), z: f(p0.z, p1.z, p2.z, p3.z) };
+}
+export function curveBetween(c, i, t) {
+  return catmull(c[i - 1] || c[i], c[i], c[i + 1], c[i + 2] || c[i + 1], t);
+}
+export function pathPolyline(a, b, p, per = 14) {
+  const c = controlPts(a, b, p);
+  if (c.length === 2) return [{ x: a.x, z: a.z }, { x: b.x, z: b.z }];
+  const out = [];
+  for (let i = 0; i < c.length - 1; i++) for (let k = 0; k < per; k++) out.push(curveBetween(c, i, k / per));
+  out.push({ x: b.x, z: b.z });
+  return out;
+}
+// Point at fraction u of the path's length, plus travel direction.
+export function pathAt(a, b, p, u) {
+  const pts = pathPolyline(a, b, p);
+  const seg = [];
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z); seg.push(l); L += l; }
+  if (L < 1e-6) return { x: b.x, z: b.z, dir: 0, len: 0 };
+  let target = Math.max(0, Math.min(1, u)) * L;
+  for (let i = 0; i < seg.length; i++) {
+    if (target <= seg[i] || i === seg.length - 1) {
+      const q = seg[i] ? Math.min(1, target / seg[i]) : 0;
+      const A = pts[i], B = pts[i + 1];
+      return { x: A.x + (B.x - A.x) * q, z: A.z + (B.z - A.z) * q, dir: Math.atan2(B.x - A.x, B.z - A.z), len: L };
+    }
+    target -= seg[i];
+  }
+  return { x: b.x, z: b.z, dir: 0, len: L };
+}
+export const pathPoint = (a, b, p, u) => pathAt(a, b, p, u);
 
 export function sample(d, t) {
   const { i, phase, u } = locate(d, t);
@@ -272,19 +342,17 @@ export function sample(d, t) {
   for (const dn of d.dancers) {
     const a = f.pos[dn.id] || { x: 0, z: 0, on: true };
     const b = g.pos[dn.id] || a;
-    const lp = localProgress(b.tm, u);
     const e = dancerProgress(b.tm, u);
-    const p = pathPoint(a, b, b.h, e);
+    const p = pathAt(a, b, b, e);
     const alpha = (a.on ? 1 : 0) + ((b.on ? 1 : 0) - (a.on ? 1 : 0)) * e;
-    const e0 = Math.min(e, 0.98), q0 = pathPoint(a, b, b.h, e0), q1 = pathPoint(a, b, b.h, e0 + 0.02);
-    const dist = Math.hypot(b.x - a.x, b.z - a.z);
-    const dur = ((b.tm?.e ?? 1) - (b.tm?.s ?? 0)) * f.transition;
+    const speed = speedAt(b.tm, u);
+    const style = styleOf(b.tr);
     out.set(dn.id, {
       x: p.x, z: p.z, alpha,
-      moving: lp > 0 && lp < 1 && (dist > 0.05 || styleOf(b.tr) === 'turn'),
-      lp, dist, dur,
-      dir: dist > 0.05 ? Math.atan2(q1.x - q0.x, q1.z - q0.z) : 0,
-      style: styleOf(b.tr), facing: facingOf(b.tr),
+      moving: speed > 0 && e < 1 && (p.len > 0.05 || style === 'turn'),
+      lp: e, dist: p.len, dur: f.transition,
+      dir: p.dir,
+      style, facing: facingOf(b.tr),
     });
   }
   return out;
@@ -343,7 +411,7 @@ export const SHAPES = {
           const side = Math.floor(k / ring), t = k % ring;
           const dirs = [[1, -1], [-1, -1], [-1, 1], [1, 1]];
           const start = [[0, ring], [ring, 0], [0, -ring], [-ring, 0]][side];
-          pts.push({ x: (start[0] + dirs[side][0] * t) * s * 0.7, z: (start[1] + dirs[side][1] * t) * s * 0.7 });
+          pts.push({ x: (start[0] + dirs[side][0] * t) * s, z: (start[1] + dirs[side][1] * t) * s });
         }
       }
       return pts;
@@ -453,7 +521,7 @@ export function demoDance() {
   d.formations[0].name = 'Line';
   d.formations[0].hold = 4;
   applyShape(d, 0, all(), 'line');
-  const steps = [['Opening V', 'v', 4, 2], ['Circle', 'circle', 4, 4], ['Diamond', 'diamond', 4, 2], ['Spiral', 'spiral', 4, 2]];
+  const steps = [['Opening V', 'v', 4, 2], ['Circle', 'circle', 4, 2], ['Diamond', 'diamond', 4, 4], ['Spiral', 'spiral', 4, 2]];
   for (const [name, shape, hold, tr] of steps) {
     const i = duplicateFormation(d, d.formations.length - 1);
     d.formations[i].name = name;
@@ -472,14 +540,18 @@ export function demoDance() {
   // A couple of curved paths to show the idea.
   const circ = d.formations[2];
   for (const id of all().slice(0, 3)) circ.pos[id].h = { x: 0.9, z: 0.4 };
+  // Noor weaves around the group on the way into the diamond, slow–fast–slow.
+  const noor = d.dancers.find((x) => x.name === 'Noor').id;
+  d.formations[3].pos[noor].wp = [{ x: 3.5, z: 2.5 }, { x: 0.5, z: 3.2 }];
+  d.formations[3].pos[noor].tm = { w: [1, 1, 3, 3, 3, 3, 1, 1] };
   stagger(d, 1, all(), { spread: 0.55 }); // ripple into the V
   makeGroup(d, [d.dancers[3].id, d.dancers[4].id]); // Leo & Sam are partners
   makeGroup(d, [d.dancers[5].id, d.dancers[6].id], { mode: 'same' }); // Ava & Kai, matching
-  d.formations[4].pos[d.dancers[0].id].tm = { s: 0.5, e: 1, pace: 'out' }; // Maya waits, then bursts
+  d.formations[4].pos[d.dancers[0].id].tm = { w: [0, 0, 3, 3] }; // Maya waits 2 counts, then goes fast
   // Travel styles and count sheets
   for (const id of all()) d.formations[2].pos[id].tr = { style: 'run' };
   d.formations[2].pos[eli.id].tr = { style: 'leap' };
-  for (const id of all()) d.formations[3].pos[id].tr = { style: 'chasse', facing: 'front' };
+  for (const id of all()) if (id !== noor) d.formations[3].pos[id].tr = { style: 'chasse', facing: 'front' };
   for (const id of all()) d.formations[4].pos[id].tr = { style: 'turn' };
   d.formations[4].pos[d.dancers[0].id].tr = { style: 'floor' };
   const L = (counts, text, who = []) => ({ id: uid(), counts, text, who });

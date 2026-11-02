@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { Person } from './people.js';
-import { pathPoint } from './model.js';
+import { pathPolyline, controlPts, curveBetween } from './model.js';
 
 export class Stage {
   constructor(container, labelLayer, marquee, hooks) {
@@ -267,12 +267,18 @@ export class Stage {
       // Big jumps (clicking a formation, undo) teleport instead of walking.
       const teleport = dist > 0.6 || !p.last;
       const speed = teleport || dt === 0 ? 0 : dist / dt;
-      let heading = p.heading;
-      if (!teleport && speed > 0.15) heading = Math.atan2(dx, dz);
-      else if (speed < 0.05) heading = this.facing?.get(p.id) ?? 0;
-      if (teleport) p.heading = heading;
+      let heading = 0;
+      let snapHeading = teleport;
+      if (f.moving) {
+        heading = f.facing === 'front' ? 0 : f.facing === 'back' ? Math.PI : f.dir;
+        if (f.style === 'turn') {
+          const spins = Math.max(1, Math.round(f.dur || 1));
+          heading += (f.lp || 0) * Math.PI * 2 * spins;
+          snapHeading = true;
+        }
+      }
       p.root.position.set(f.x, 0, f.z);
-      p.tick(dt, speed, heading, this.time);
+      p.tick(dt, speed, heading, this.time, f, snapHeading);
       p.last = { x: f.x, z: f.z };
     }
   }
@@ -295,7 +301,7 @@ export class Stage {
   }
 
   /* ---------- path guides ---------- */
-  // items: [{id, color, p0, p1, h, handle:boolean}]
+  // items: [{id, color, a, b, entry, edit}] — entry holds wp/h; edit shows draggable dots.
   setGuides(items) {
     const g = this.guides;
     while (g.children.length) {
@@ -304,15 +310,24 @@ export class Stage {
       c.material?.dispose();
     }
     this.handles = [];
+    const sphere = (x, z, r, color, data, solid) => {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 20, 14),
+        solid
+          ? new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: color, emissiveIntensity: 0.45, roughness: 0.4 })
+          : new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false }),
+      );
+      m.position.set(x, r, z);
+      m.userData = data;
+      g.add(m);
+      this.handles.push(m);
+      return m;
+    };
     for (const it of items) {
-      const pts = [];
-      for (let k = 0; k <= 32; k++) {
-        const p = pathPoint(it.p0, it.p1, it.h, k / 32);
-        pts.push(new THREE.Vector3(p.x, 0.02, p.z));
-      }
+      const pts = pathPolyline(it.a, it.b, it.entry, 18).map((p) => new THREE.Vector3(p.x, 0.02, p.z));
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(pts),
-        new THREE.LineDashedMaterial({ color: it.color, dashSize: 0.16, gapSize: 0.12, transparent: true, opacity: it.handle ? 0.95 : 0.6 }),
+        new THREE.LineDashedMaterial({ color: it.color, dashSize: 0.16, gapSize: 0.12, transparent: true, opacity: it.edit ? 1 : 0.6 }),
       );
       line.computeLineDistances();
       g.add(line);
@@ -321,24 +336,16 @@ export class Stage {
         new THREE.MeshBasicMaterial({ color: it.color, transparent: true, opacity: 0.7, depthWrite: false }),
       );
       ghost.rotation.x = -Math.PI / 2;
-      ghost.position.set(it.p0.x, 0.015, it.p0.z);
+      ghost.position.set(it.a.x, 0.015, it.a.z);
       g.add(ghost);
-      if (it.handle) {
-        const mid = pathPoint(it.p0, it.p1, it.h, 0.5);
-        const hd = new THREE.Mesh(
-          new THREE.SphereGeometry(0.13, 20, 14),
-          new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: it.color, emissiveIntensity: 0.35, roughness: 0.4 }),
-        );
-        hd.position.set(mid.x, 0.13, mid.z);
-        hd.userData.handleFor = it.id;
-        const halo = new THREE.Mesh(
-          new THREE.RingGeometry(0.16, 0.22, 32),
-          new THREE.MeshBasicMaterial({ color: it.color, transparent: true, depthWrite: false }),
-        );
-        halo.rotation.x = -Math.PI / 2;
-        halo.position.set(mid.x, 0.016, mid.z);
-        g.add(hd, halo);
-        this.handles.push(hd);
+      if (!it.edit) continue;
+      const c = controlPts(it.a, it.b, it.entry);
+      // Solid dots: existing bends (drag to move, double-click to remove)
+      for (let i = 1; i < c.length - 1; i++) sphere(c[i].x, c[i].z, 0.14, it.color, { handleFor: it.id, kind: 'wp', index: i - 1 }, true);
+      // Hollow dots between them: drag to add a new bend
+      for (let i = 0; i < c.length - 1; i++) {
+        const m = curveBetween(c, i, 0.5);
+        sphere(m.x, m.z, 0.09, it.color, { handleFor: it.id, kind: 'add', index: i, x: m.x, z: m.z }, false);
       }
     }
   }
@@ -356,7 +363,7 @@ export class Stage {
   pick(e) {
     this.raycaster.setFromCamera(this.ndc(e), this.camera);
     const h = this.raycaster.intersectObjects(this.handles, false)[0];
-    if (h) return { handle: h.object.userData.handleFor };
+    if (h) return { handle: h.object.userData };
     const hits = this.raycaster.intersectObjects([...this.people.values()].filter((p) => p.root.visible).map((p) => p.hit), false);
     return hits[0] ? { id: hits[0].object.userData.id } : null;
   }
@@ -373,7 +380,7 @@ export class Stage {
       moved = false;
       if (hit?.handle) {
         mode = 'handle';
-        start = { id: hit.handle };
+        start = hit.handle;
         this.hooks.onHandleStart?.(hit.handle);
       } else if (hit?.id) {
         const ok = this.hooks.onDancerDown?.(hit.id, e.shiftKey || e.metaKey || e.ctrlKey);
@@ -408,7 +415,7 @@ export class Stage {
         const f = this.floorAt(e);
         if (!f) return;
         moved = true;
-        this.hooks.onHandleDrag?.(start.id, f.x, f.z);
+        this.hooks.onHandleDrag?.(start, f.x, f.z);
       } else if (mode === 'marquee') {
         const r = el.getBoundingClientRect();
         const x = e.clientX - r.left, y = e.clientY - r.top;

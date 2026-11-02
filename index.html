@@ -63,6 +63,8 @@
       <div class="stage" id="stage"></div>
       <div class="labels" id="labels"></div>
       <div class="marquee" id="marquee" hidden></div>
+      <div class="path-hint" id="path-hint" hidden></div>
+      <div class="caption" id="caption" hidden></div>
 
       <div class="stage-toolbar">
         <div class="seg" role="tablist" aria-label="View">
@@ -103,7 +105,14 @@
         <button class="play" data-action="play" title="Play / pause (Space)"><i data-icon="play"></i></button>
         <button class="icon-btn" data-action="prev-formation" title="Previous formation ([)"><i data-icon="skip-back"></i></button>
         <button class="icon-btn" data-action="next-formation" title="Next formation (])"><i data-icon="skip-fwd"></i></button>
-        <div class="time"><span id="time-now">0:00.0</span><span class="time-total"> / <span id="time-total">0:00</span></span></div>
+        <div class="time" title="8-count · count">
+          <span class="count-now" id="count-now">1 · 1</span>
+          <span class="time-sub"><span id="time-now">0:00.0</span><span class="time-total"> / <span id="time-total">0:00</span></span></span>
+        </div>
+        <div class="tempo-wrap">
+          <button class="btn small ghost tempo" id="tempo-btn" data-action="tempo-pop" title="Tempo, count 1 and metronome">120 BPM</button>
+          <div class="tempo-pop" id="tempo-pop" hidden></div>
+        </div>
         <div class="tl-spacer"></div>
         <div class="music" id="music"></div>
         <div class="zoom">
@@ -140,6 +149,7 @@
     </div>
     <dl class="keys">
       <dt><kbd>Space</kbd></dt><dd>Play / pause</dd>
+      <dt>Rhythm strip</dt><dd>Click a count to change its speed; drag to paint</dd>
       <dt><kbd>N</kbd></dt><dd>Add a dancer</dd>
       <dt><kbd>F</kbd></dt><dd>New formation from the current one</dd>
       <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Previous / next formation</dd>

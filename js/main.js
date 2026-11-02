@@ -6,12 +6,17 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtT = (t) => { const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, '0')}`; };
 const fmtS = (s) => `${+(+s).toFixed(2)}s`;
+// Counts are the main unit; seconds are secondary.
+const cts = (sec) => Math.round((sec / M.beatLen(dance)) * 100) / 100;
+const fmtC = (sec) => { const c = cts(sec); return `${+c.toFixed(2)} ct`; };
+const fmtPos = (t) => { const c = M.countAt(dance, t); return c.beat < 0 ? 'Intro' : `${c.eight} · ${c.count}`; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 let dance;
 const ui = {
   sel: new Set(), fi: 0, t: 0, playing: false, stopAt: null,
   view: '3d', paths: true, grid: true, labels: true, snap: true, pps: 32,
+  metronome: false, taps: [], lastBeat: null,
 };
 const hist = { past: [], future: [] };
 const audio = { el: new Audio(), name: null, url: null, duration: 0, peaks: null };
@@ -50,17 +55,45 @@ const stage = new Stage($('#stage'), $('#labels'), $('#marquee'), {
     ids.forEach((id) => ui.sel.add(id));
     selectionChanged();
   },
-  onHandleStart() { if (ui.playing) pause(); parkAtFormation(); drag = { before: snap() }; },
-  onHandleDrag(id, x, z) {
-    const f = cur(), prev = dance.formations[ui.fi - 1];
+  // Path dots: solid = a bend (drag to move), hollow = drag to add a bend.
+  onHandleStart(h) {
+    if (ui.playing) pause();
+    parkAtFormation();
+    const prev = dance.formations[ui.fi - 1];
+    const e = cur().pos[h.handleFor];
+    drag = { before: snap(), id: h.handleFor, index: h.index };
     if (!prev) return;
-    const p0 = prev.pos[id], p1 = f.pos[id];
-    const h = { x: M.round(x - (p0.x + p1.x) / 2), z: M.round(z - (p0.z + p1.z) / 2) };
-    if (Math.hypot(h.x, h.z) < 0.12) delete p1.h; else p1.h = h;
+    // Upgrade a single legacy curve into a waypoint list.
+    if (!e.wp) e.wp = M.controlPts(prev.pos[h.handleFor], e, e).slice(1, -1).map((p) => ({ x: M.round(p.x), z: M.round(p.z) }));
+    delete e.h;
+    if (h.kind === 'add') { e.wp.splice(h.index, 0, { x: M.round(h.x), z: M.round(h.z) }); drag.index = h.index; }
+  },
+  onHandleDrag(h, x, z) {
+    if (!drag) return;
+    const e = cur().pos[drag.id], b = M.bounds(dance);
+    if (!e.wp?.[drag.index]) return;
+    e.wp[drag.index] = { x: clamp(snapV(x), -b.x, b.x), z: clamp(snapV(z), -b.z, b.z) };
     refreshGuides();
   },
-  onHandleEnd(moved) { if (drag && moved) commit(drag.before); drag = null; },
-  onHandleReset(id) { mutate(() => { delete cur().pos[id].h; }); toast('Path straightened'); },
+  onHandleEnd(moved) {
+    if (drag) {
+      const e = cur().pos[drag.id];
+      if (e && e.wp && !e.wp.length) delete e.wp;
+      if (moved) commit(drag.before); else { dance = JSON.parse(drag.before); changed(false); refreshGuides(); }
+    }
+    drag = null;
+  },
+  onHandleReset(h) {
+    if (h.kind !== 'wp') return;
+    mutate(() => {
+      const e = cur().pos[h.handleFor];
+      if (!e.wp) e.wp = M.controlPts(dance.formations[ui.fi - 1].pos[h.handleFor], e, e).slice(1, -1);
+      delete e.h;
+      e.wp.splice(h.index, 1);
+      if (!e.wp.length) delete e.wp;
+    });
+    toast('Bend removed');
+  },
   onDancerDblClick(id) { openCast(); setTimeout(() => $(`.dancer[data-id="${id}"] .name`)?.select(), 50); },
 });
 
@@ -127,6 +160,7 @@ function goTo(i, { keepTime = false } = {}) {
   if (!keepTime) ui.t = M.timing(dance).segs[ui.fi].start;
   renderStoryboard();
   renderTimeline();
+  renderCast();
   renderInspector();
   refreshGuides();
   renderMinimap();
@@ -167,6 +201,11 @@ function tick(dt) {
   stage.setFrame(frame, { selected: ui.sel, playing: ui.playing });
   updateMinimapDots(frame);
   $('#time-now').textContent = fmtT(ui.t);
+  $('#count-now').textContent = fmtPos(ui.t);
+  const beat = Math.floor(M.beatAt(dance, ui.t) + 1e-6);
+  if (ui.playing && ui.metronome && ui.lastBeat !== null && beat !== ui.lastBeat && beat >= 0) click(beat % 8 === 0);
+  ui.lastBeat = ui.playing ? beat : null;
+  updateCaption();
   const ph = $('#playhead');
   ph.style.transform = `translateX(${16 + ui.t * ui.pps}px)`;
   if (ui.playing) {
@@ -206,11 +245,12 @@ function refreshGuides() {
   for (const dn of dance.dancers) {
     const p0 = prev.pos[dn.id], p1 = f.pos[dn.id];
     if (!p0 || !p1 || (!p0.on && !p1.on)) continue;
-    const moves = Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.05;
-    if (!moves && !p1.h) continue;
-    items.push({ id: dn.id, color: dn.color, p0, p1, h: p1.h, handle: ui.sel.has(dn.id) && moves });
+    const moves = Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.05 || p1.wp?.length || p1.h;
+    if (!moves) continue;
+    items.push({ id: dn.id, color: dn.color, a: p0, b: p1, entry: p1, edit: ui.sel.has(dn.id) });
   }
   stage.setGuides(items);
+  updatePathHint();
   renderMinimapPaths();
 }
 
@@ -226,15 +266,16 @@ function renderStoryboard() {
       <div class="fcard-top">
         <span class="num">${i + 1}</span>
         <span class="fname">${esc(f.name)}</span>
-        <span class="fdur">${fmtS(f.hold)}</span>
+        <span class="fdur">${fmtC(f.hold)}</span>
       </div>
       <div class="fthumb">${M.thumbSVG(dance, i, { w: 200, h: 110 })}</div>
+      ${f.notes?.length ? `<div class="fnote"><b>${esc(f.notes[0].counts)}</b> ${esc(f.notes[0].text)}${f.notes.length > 1 ? ` <span>+${f.notes.length - 1}</span>` : ''}</div>` : ''}
       ${isCur ? `
       <div class="fedit">
         <label class="field"><span>Name</span><input class="input" data-fedit="name" value="${esc(f.name)}" maxlength="60"></label>
         <div class="field-row">
-          <label class="field"><span>Hold</span><span class="unit" data-unit="s"><input class="input" type="number" min="0" max="600" step="0.5" data-fedit="hold" value="${f.hold}"></span></label>
-          ${i < n - 1 ? `<label class="field"><span>Move to next</span><span class="unit" data-unit="s"><input class="input" type="number" min="0.25" max="600" step="0.5" data-fedit="transition" value="${f.transition}"></span></label>` : ''}
+          <label class="field"><span>Hold</span><span class="unit" data-unit="ct"><input class="input" type="number" min="0" max="512" step="1" data-fedit="hold" value="${cts(f.hold)}"></span></label>
+          ${i < n - 1 ? `<label class="field"><span>Move to next</span><span class="unit" data-unit="ct"><input class="input" type="number" min="1" max="512" step="1" data-fedit="transition" value="${cts(f.transition)}"></span></label>` : ''}
         </div>
         <div class="btn-row">
           <button class="btn small" data-action="dup-formation"><i data-icon="copy"></i>Duplicate</button>
@@ -244,10 +285,21 @@ function renderStoryboard() {
         </div>
       </div>` : ''}
     </li>
-    ${i < n - 1 ? `<li class="fgap" data-gap="${i}"><span class="fgap-line"></span><span class="fgap-label">${icon('down', 12)} ${fmtS(f.transition)} move${dance.formations[i + 1] && Object.values(dance.formations[i + 1].pos).some((p) => p.tm || p.h) ? ' · custom' : ''}</span></li>` : ''}`;
+    ${i < n - 1 ? `<li class="fgap" data-gap="${i}"><span class="fgap-line"></span><span class="fgap-label">${icon('down', 12)} ${fmtC(f.transition)} move${gapSummary(dance.formations[i + 1])}</span></li>` : ''}`;
   }).join('') + '<li class="fadd"><button class="add-card" data-action="add-formation"><i data-icon="plus"></i>New formation</button></li>';
   $('#formation-count').textContent = n;
   hydrateIcons(list);
+}
+function gapSummary(next) {
+  if (!next) return '';
+  const entries = Object.values(next.pos);
+  const styles = [...new Set(entries.map((p) => M.styleOf(p.tr)))];
+  const parts = [];
+  if (styles.length === 1 && styles[0] !== 'walk') parts.push(M.STYLES[styles[0]].label.toLowerCase());
+  else if (styles.length > 1) parts.push('mixed');
+  if (entries.some((p) => p.tm)) parts.push('rhythm');
+  if (entries.some((p) => p.wp || p.h)) parts.push('paths');
+  return parts.length ? ` · ${parts.join(', ')}` : '';
 }
 function highlightCard() {
   document.querySelectorAll('.fcard').forEach((el) => el.classList.toggle('playing', +el.dataset.fi === ui.fi));
@@ -328,7 +380,7 @@ function renderInspector() {
     </section>`;
 
   if (!ids.length) {
-    el.innerHTML = `${arrange}
+    el.innerHTML = `${countSheet(f, [])}${ui.fi > 0 ? moveSection(f, onstage, f.pos[onstage[0]] || {}, true) : ''}${arrange}
       <section class="section">
         <h3>Stage</h3>
         <div class="field-row">
@@ -336,7 +388,7 @@ function renderInspector() {
           <label class="field"><span>Depth</span><span class="unit" data-unit="m"><input class="input" type="number" min="3" max="30" step="1" data-stage="d" value="${dance.stage.d}"></span></label>
         </div>
       </section>
-      <section class="section"><div class="hint-card">Click a dancer to edit them, or drag across the floor to select a group. Select someone to bend their path or change when they move.</div></section>`;
+      <section class="section"><div class="hint-card">Click a dancer to edit just them, or drag across the floor to select a group. Their path, rhythm and travel style show up here.</div></section>`;
     hydrateIcons(el);
     return;
   }
@@ -347,37 +399,7 @@ function renderInspector() {
   const colors = M.PALETTE.map((c) => `<button style="background:${c}" class="${ids.length === 1 && first.color.toLowerCase() === c.toLowerCase() ? 'on' : ''}" data-color="${c}" aria-label="Color ${c}"></button>`).join('');
 
   let timing = '';
-  if (ui.fi > 0) {
-    const prev = dance.formations[ui.fi - 1];
-    const tm = p.tm || {};
-    const s = tm.s ?? 0, e = tm.e ?? 1, pace = tm.pace || 'smooth';
-    const T = prev.transition;
-    const curved = ids.some((id) => f.pos[id].h);
-    timing = `
-    <section class="section">
-      <h3>Move into “${esc(f.name)}” <button class="btn small ghost" data-action="preview-move">${icon('play', 12)}Preview</button></h3>
-      <div class="timing">
-        <div class="tbar" aria-hidden="true">
-          <div class="twin" style="left:${s * 100}%;width:${Math.max(0, e - s) * 100}%">${paceIcon(pace)}</div>
-        </div>
-        <div class="tscale"><span>0s</span><span>${fmtS(T)}</span></div>
-        <label class="field"><span>Leaves at <b id="tm-s-val">${fmtS(s * T)}</b></span><input type="range" min="0" max="100" step="5" data-tm="s" value="${Math.round(s * 100)}"></label>
-        <label class="field"><span>Arrives by <b id="tm-e-val">${fmtS(e * T)}</b></span><input type="range" min="0" max="100" step="5" data-tm="e" value="${Math.round(e * 100)}"></label>
-        <div class="field"><span>Pace</span>
-          <div class="paces">${Object.entries(M.PACES).map(([k, v]) => `<button class="pace${k === pace ? ' on' : ''}" data-pace="${k}">${paceIcon(k)}<span>${v.label}</span></button>`).join('')}</div>
-        </div>
-        <div class="btn-row">
-          ${ids.length > 1 ? '<button class="btn small" data-action="stagger" title="Each dancer leaves a beat after the one to their left"><i data-icon="ripple"></i>Ripple left → right</button>' : ''}
-          <button class="btn small ghost" data-action="reset-timing">Even timing</button>
-        </div>
-      </div>
-      <div class="path-row">
-        <span>${icon('route', 14)} Path: <b>${curved ? 'Curved' : 'Straight'}</b></span>
-        ${curved ? '<button class="btn small ghost" data-action="straighten">Straighten</button>' : '<span class="muted">Drag the dot on the path to curve it</span>'}
-      </div>
-    </section>`;
-  }
-
+  if (ui.fi > 0) timing = moveSection(f, ids, p);
   const groupsHit = [...new Set(ids.map((id) => dance.dancers.find((d) => d.id === id).group).filter(Boolean))];
   const exactGroup = groupsHit.length === 1 && M.members(dance, groupsHit[0]).length === ids.length && ids.every((id) => dance.dancers.find((d) => d.id === id).group === groupsHit[0]) ? dance.groups.find((g) => g.id === groupsHit[0]) : null;
   const soloGroup = ids.length === 1 && first.group ? dance.groups.find((g) => g.id === first.group) : null;
@@ -425,8 +447,66 @@ function renderInspector() {
     </section>
     ${grouping}
     ${timing}
+    ${countSheet(f, ids)}
     ${arrange}`;
   hydrateIcons(el);
+}
+
+function moveSection(f, ids, p, everyone = false) {
+  const prev = dance.formations[ui.fi - 1];
+  const n = Math.max(1, Math.round(cts(prev.transition)));
+  const w = M.toRhythm(p.tm, n);
+  const b0 = Math.round(M.beatAt(dance, M.timing(dance).segs[ui.fi - 1].holdEnd));
+  const lab = (k) => ((((b0 + k) % 8) + 8) % 8) + 1;
+  const firstGo = w.findIndex((v) => v > 0), lastGo = w.length - 1 - [...w].reverse().findIndex((v) => v > 0);
+  const summary = firstGo < 0 ? 'Stays put' : `Leaves on ${lab(firstGo)} · arrives on ${lab(lastGo)}${lastGo + 1 < n ? `, then holds` : ''}`;
+  const style = M.styleOf(p.tr), facing = M.facingOf(p.tr);
+  const bends = ids.reduce((m, id) => Math.max(m, f.pos[id].wp?.length || (f.pos[id].h ? 1 : 0)), 0);
+  const who = everyone ? `Everyone onstage (${ids.length})` : ids.length === 1 ? esc(dance.dancers.find((d) => d.id === ids[0]).name) : `${ids.length} dancers`;
+  return `
+    <section class="section move">
+      <h3>Move into “${esc(f.name)}” <button class="btn small ghost" data-action="preview-move">${icon('play', 12)}Preview</button></h3>
+      <p class="muted" style="margin-bottom:10px">${who} · ${n} count${n > 1 ? 's' : ''}</p>
+      <div class="field"><span>Rhythm <b class="rsum">${summary}</b></span>
+        <div class="rhythm" data-n="${n}" style="--n:${n}">
+          ${w.map((v, i) => `<button class="rcell" data-ri="${i}" data-v="${v}" title="Count ${lab(i)}: ${M.SPEEDS[v]}"><span class="rbar" style="height:${(v / 3) * 100}%"></span><span class="rlab">${lab(i)}</span></button>`).join('')}
+        </div>
+        <span class="rlegend">Click a count to change its speed (hold → slow → medium → fast), or drag across counts to paint.</span>
+        <div class="presets">${Object.entries(M.RHYTHM_PRESETS).map(([k, v]) => `<button class="chip" data-rpreset="${k}">${v.label}</button>`).join('')}</div>
+      </div>
+      <div class="field"><span>Travel</span>
+        <div class="styles">${Object.entries(M.STYLES).map(([k, v]) => `<button class="style-chip${k === style ? ' on' : ''}" data-style="${k}">${v.label}</button>`).join('')}</div>
+      </div>
+      <div class="field"><span>Facing while moving</span>
+        <div class="seg small-seg">${Object.entries(M.FACINGS).map(([k, v]) => `<button class="${k === facing ? 'on' : ''}" data-facing="${k}">${v.label}</button>`).join('')}</div>
+      </div>
+      <div class="path-row">
+        <span>${icon('route', 14)} Path: <b>${bends ? `${bends} bend${bends > 1 ? 's' : ''}` : 'Straight'}</b></span>
+        ${bends ? '<button class="btn small ghost" data-action="straighten">Straighten</button>' : ''}
+      </div>
+      ${everyone ? '' : '<p class="muted path-help">On the stage: drag a hollow ○ dot on the path to add a bend, drag a solid ● dot to move it, double-click ● to remove it.</p>'}
+      ${ids.length > 1 ? '<div class="btn-row" style="margin-top:8px"><button class="btn small" data-action="stagger" title="Each dancer leaves a count after the one to their left"><i data-icon="ripple"></i>Ripple left → right</button></div>' : ''}
+    </section>`;
+}
+
+function countSheet(f, ids) {
+  const sel = new Set(ids);
+  const names = (who) => (who?.length ? who.map((id) => dance.dancers.find((d) => d.id === id)?.name).filter(Boolean).join(' & ') : 'Everyone');
+  const rows = (f.notes || []).map((n) => {
+    const mine = !sel.size || !n.who?.length || n.who.some((id) => sel.has(id));
+    return `<li class="note${mine ? '' : ' dim'}" data-nid="${n.id}">
+      <input class="ncounts${M.parseCounts(n.counts) ? '' : ' bad'}" data-note="counts" value="${esc(n.counts)}" placeholder="1-4" aria-label="Counts" spellcheck="false">
+      <input class="ntext" data-note="text" value="${esc(n.text)}" placeholder="What happens on these counts" aria-label="Movement">
+      <button class="who" data-action="note-who" title="${sel.size ? 'Click to assign to the selected dancers (click again for everyone)' : 'Select dancers, then click to assign this line to them'}">${esc(names(n.who))}</button>
+      <button class="icon-btn" data-action="note-del" title="Delete line"><i data-icon="x"></i></button>
+    </li>`;
+  }).join('');
+  return `
+    <section class="section">
+      <h3>Count sheet · ${esc(f.name)}</h3>
+      ${rows ? `<ol class="notes">${rows}</ol>` : '<p class="muted" style="margin-bottom:8px">Write what happens on each count — “1-4 arm sweep”, “5-8 drop to floor”. Lines show as captions during playback.</p>'}
+      <button class="btn small" data-action="note-add"><i data-icon="plus"></i>Add line${sel.size ? ` for ${sel.size === 1 ? esc(dance.dancers.find((d) => d.id === ids[0]).name) : `${sel.size} selected`}` : ''}</button>
+    </section>`;
 }
 
 /* ---------- Minimap ---------- */
@@ -456,8 +536,8 @@ function renderMinimapPaths() {
   const prev = dance.formations[ui.fi - 1], f = cur();
   g.innerHTML = dance.dancers.map((dn) => {
     const p0 = prev.pos[dn.id], p1 = f.pos[dn.id];
-    if (!p0 || !p1 || Math.hypot(p1.x - p0.x, p1.z - p0.z) < 0.05) return '';
-    const pts = Array.from({ length: 13 }, (_, k) => M.pathPoint(p0, p1, p1.h, k / 12)).map((p) => mm(p.x, p.z).map((v) => v.toFixed(1)).join(','));
+    if (!p0 || !p1 || (Math.hypot(p1.x - p0.x, p1.z - p0.z) < 0.05 && !p1.wp)) return '';
+    const pts = M.pathPolyline(p0, p1, p1, 8).map((p) => mm(p.x, p.z).map((v) => v.toFixed(1)).join(','));
     const [gx, gz] = mm(p0.x, p0.z);
     return `<polyline points="${pts.join(' ')}" fill="none" stroke="${dn.color}" stroke-width="1.4" stroke-dasharray="3 2.5" opacity=".8"/><circle cx="${gx.toFixed(1)}" cy="${gz.toFixed(1)}" r="3" fill="none" stroke="${dn.color}" stroke-width="1" opacity=".7"/>`;
   }).join('');
@@ -482,19 +562,28 @@ function renderTimeline() {
   const width = 32 + (end + 6) * pps;
   $('#tl-inner').style.width = `${width}px`;
   $('#time-total').textContent = fmtT(end);
+  $('#tempo-btn').innerHTML = `${icon('clock', 14)}${dance.music.bpm} BPM`;
 
-  // Ruler
-  const step = pps >= 48 ? 1 : pps >= 24 ? 2 : pps >= 12 ? 5 : 10;
+  // Ruler: 8-counts (bold), beats (ticks), seconds (small, underneath)
+  const beat = M.beatLen(dance), off = dance.music.offset || 0;
   let ticks = '';
-  for (let s = 0; s <= end + 6; s += step) ticks += `<span class="tick" style="left:${16 + s * pps}px">${s}s</span>`;
+  const bStart = Math.ceil(-off / beat), bEnd = Math.floor((end + 6 - off) / beat);
+  const beatPx = beat * pps;
+  for (let b = bStart; b <= bEnd; b++) {
+    const x = 16 + (off + b * beat) * pps;
+    if (b % 8 === 0) ticks += `<span class="tick major" style="left:${x}px">${b / 8 + 1}</span>`;
+    else if (beatPx >= 7) ticks += `<span class="tick beat${b % 2 ? '' : ' even'}" style="left:${x}px">${beatPx >= 22 ? (((b % 8) + 8) % 8) + 1 : ''}</span>`;
+  }
+  const step = pps >= 48 ? 2 : pps >= 24 ? 5 : pps >= 12 ? 10 : 20;
+  for (let t = 0; t <= end + 6; t += step) ticks += `<span class="sec" style="left:${16 + t * pps}px">${t}s</span>`;
   $('#ruler').innerHTML = ticks;
 
   // Formation bands
   $('#formations-track').innerHTML = dance.formations.map((f, i) => {
     const s = segs[i];
     const w = f.hold * pps;
-    const tr = i < dance.formations.length - 1 ? `<div class="trans" style="left:${16 + s.holdEnd * pps}px;width:${f.transition * pps}px" title="Move: ${fmtS(f.transition)}"><span>${f.transition * pps > 34 ? fmtS(f.transition) : ''}</span><span class="handle" data-resize="transition" data-fi="${i}"></span></div>` : '';
-    return `<div class="fband${i === ui.fi ? ' cur' : ''}" data-fi="${i}" style="left:${16 + s.start * pps}px;width:${w}px" title="${esc(f.name)} · ${fmtS(f.hold)}"><span class="fband-n">${i + 1}</span><span class="fband-name">${w > 60 ? esc(f.name) : ''}</span><span class="handle" data-resize="hold" data-fi="${i}"></span></div>${tr}`;
+    const tr = i < dance.formations.length - 1 ? `<div class="trans" style="left:${16 + s.holdEnd * pps}px;width:${f.transition * pps}px" title="Move: ${fmtC(f.transition)}"><span>${f.transition * pps > 40 ? fmtC(f.transition) : ''}</span><span class="handle" data-resize="transition" data-fi="${i}"></span></div>` : '';
+    return `<div class="fband${i === ui.fi ? ' cur' : ''}" data-fi="${i}" style="left:${16 + s.start * pps}px;width:${w}px" title="${esc(f.name)} · ${fmtC(f.hold)}"><span class="fband-n">${i + 1}</span><span class="fband-name">${w > 60 ? esc(f.name) : ''}</span><span class="handle" data-resize="hold" data-fi="${i}"></span></div>${tr}`;
   }).join('');
 
   drawWave(width);
@@ -691,7 +780,39 @@ const actions = {
   }),
   stagger: () => { mutate(() => M.stagger(dance, ui.fi, [...ui.sel], { spread: 0.6 })); toast('Rippled — press Preview to watch it'); },
   'reset-timing': () => mutate(() => { for (const id of selIds()) delete cur().pos[id].tm; }),
-  straighten: () => mutate(() => { for (const id of selIds()) delete cur().pos[id].h; }),
+  straighten: () => mutate(() => { for (const id of selIds()) { delete cur().pos[id].h; delete cur().pos[id].wp; } }),
+  'note-add': () => {
+    const f = cur();
+    const last = f.notes?.[f.notes.length - 1];
+    const r = last && M.parseCounts(last.counts);
+    const span = r ? r[1] - r[0] + 1 : 4;
+    const counts = r ? `${r[1] + 1}-${r[1] + span}` : '1-4';
+    const id = M.uid();
+    mutate(() => { (f.notes ||= []).push({ id, counts, text: '', who: [...ui.sel] }); });
+    setTimeout(() => $(`.note[data-nid="${id}"] .ntext`)?.focus(), 30);
+  },
+  'note-del': (el) => mutate(() => { const id = el.closest('[data-nid]').dataset.nid; cur().notes = cur().notes.filter((n) => n.id !== id); }),
+  'note-who': (el) => mutate(() => {
+    const n = cur().notes.find((x) => x.id === el.closest('[data-nid]').dataset.nid);
+    const sel = [...ui.sel];
+    const same = sel.length && n.who?.length === sel.length && sel.every((id) => n.who.includes(id));
+    n.who = sel.length && !same ? sel : [];
+  }),
+  'tempo-pop': () => { const p = $('#tempo-pop'); p.hidden = !p.hidden; if (!p.hidden) renderTempo(); },
+  tap: () => {
+    const now = performance.now();
+    ui.taps = ui.taps.filter((t) => now - t < 2500);
+    ui.taps.push(now);
+    if (ui.taps.length >= 3) {
+      const gaps = ui.taps.slice(1).map((t, i) => t - ui.taps[i]);
+      const bpm = 60000 / (gaps.reduce((a, b) => a + b, 0) / gaps.length);
+      mutate(() => M.setTempo(dance, bpm));
+      renderTempo();
+    }
+    $('#tap-count').textContent = ui.taps.length < 3 ? `Tap ${3 - ui.taps.length} more…` : 'Keep tapping to refine';
+  },
+  'count-one': () => { mutate(() => { dance.music.offset = M.round(ui.t); }); renderTempo(); toast(`Count 1 now starts at ${fmtT(ui.t)}`); },
+  metronome: (el) => { ui.metronome = el.checked; if (ui.metronome) click(true); },
   'preview-move': () => {
     const { segs } = M.timing(dance);
     const s = segs[ui.fi];
@@ -768,10 +889,67 @@ function setDancerColor(id, c) {
 }
 function closeMenus() { $('#menu-file').hidden = true; }
 
+function renderTempo() {
+  $('#tempo-pop').innerHTML = `
+    <h4>Tempo & counts</h4>
+    <div class="field-row">
+      <label class="field"><span>Beats per minute</span><input class="input" type="number" min="30" max="300" step="1" data-bpm value="${dance.music.bpm}"></label>
+      <div class="field"><span>&nbsp;</span><button class="btn" data-action="tap">Tap tempo</button></div>
+    </div>
+    <p class="muted" id="tap-count">Tap along with the beat, or type the BPM.</p>
+    <div class="field" style="margin-top:10px"><span>Count 1 starts at <b>${fmtT(dance.music.offset || 0)}</b></span>
+      <button class="btn small" data-action="count-one">Set to playhead (${fmtT(ui.t)})</button>
+    </div>
+    <p class="muted">Play the music, pause on the first downbeat, then set count 1 there.</p>
+    <label class="switch" style="margin-top:10px">Metronome click while playing<input type="checkbox" data-action="metronome" ${ui.metronome ? 'checked' : ''}></label>
+    <p class="muted" style="margin-top:8px">Changing the tempo keeps every hold and move the same number of counts.</p>`;
+}
+
+// Metronome: short click on every beat, accented on count 1.
+let actx;
+function click(accent) {
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = accent ? 1600 : 1000;
+    g.gain.setValueAtTime(accent ? 0.35 : 0.2, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.06);
+    o.connect(g).connect(actx.destination);
+    o.start();
+    o.stop(actx.currentTime + 0.07);
+  } catch { /* audio unavailable */ }
+}
+
+// Count-sheet captions on the stage.
+let lastCaption = '';
+function updateCaption() {
+  const el = $('#caption');
+  const { i, count, lines } = M.activeNotes(dance, ui.t);
+  const html = lines.length
+    ? `<span class="cap-count">${esc(dance.formations[i].name)} · ct ${count}</span>${lines.map((n) => `<span class="cap-line"><b>${esc(n.counts)}</b> ${esc(n.text)}${n.who?.length ? ` <em>${esc(n.who.map((id) => dance.dancers.find((d) => d.id === id)?.name).filter(Boolean).join(' & '))}</em>` : ''}</span>`).join('')}`
+    : '';
+  if (html === lastCaption) return;
+  lastCaption = html;
+  el.innerHTML = html;
+  el.hidden = !html;
+}
+
+// Tells you how to edit paths, right where you'd look for it.
+function updatePathHint() {
+  const el = $('#path-hint');
+  if (!ui.paths || ui.playing || ui.fi === 0 || !dance) { el.hidden = true; return; }
+  el.hidden = false;
+  const names = [...ui.sel].map((id) => dance.dancers.find((d) => d.id === id)?.name).filter(Boolean);
+  el.innerHTML = names.length
+    ? `${icon('route', 14)}<span>Editing ${esc(names.length > 2 ? `${names.length} paths` : `${names.join(' & ')}’s path`)}: drag <b>○</b> to add a bend · drag <b>●</b> to move it · double-click <b>●</b> to remove</span>`
+    : `${icon('route', 14)}<span>Click a dancer to edit their path and rhythm into “${esc(cur().name)}”</span>`;
+}
+
 /* ================= Events ================= */
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!e.target.closest('.menu-wrap')) closeMenus();
+  if (!e.target.closest('#tempo-pop') && !e.target.closest('[data-action=tempo-pop]')) $('#tempo-pop').hidden = true;
   if (!e.target.closest('.color-pop') && !e.target.closest('[data-action=color]')) $('.color-pop')?.remove();
   if (el && actions[el.dataset.action] && el.type !== 'checkbox') { actions[el.dataset.action](el); return; }
 
@@ -791,6 +969,15 @@ document.addEventListener('click', (e) => {
   }
   const color = e.target.closest('#insp [data-color]');
   if (color) { mutate(() => { for (const id of ui.sel) setDancerColor(id, color.dataset.color); }); return; }
+  const preset = e.target.closest('[data-rpreset]');
+  if (preset) { setRhythm((w, n) => M.RHYTHM_PRESETS[preset.dataset.rpreset].fn(n)); return; }
+  const st = e.target.closest('[data-style]');
+  if (st) {
+    mutate(() => { for (const id of selIds()) { const p = cur().pos[id]; p.tr = { ...(p.tr || {}), style: st.dataset.style }; if (st.dataset.style !== 'chasse' && p.tr.facing === 'front' && !p.tr.facingSet) delete p.tr.facing; } });
+    return;
+  }
+  const fc = e.target.closest('[data-facing]');
+  if (fc) { mutate(() => { for (const id of selIds()) { const p = cur().pos[id]; p.tr = { ...(p.tr || {}), facing: fc.dataset.facing, facingSet: true }; } }); return; }
   const pace = e.target.closest('[data-pace]');
   if (pace) { mutate(() => { for (const id of ui.sel) cur().pos[id].tm = { ...(cur().pos[id].tm || {}), pace: pace.dataset.pace }; }); return; }
 
@@ -819,6 +1006,12 @@ document.addEventListener('change', (e) => {
     mutate(() => { dance.dancers.find((d) => d.id === id).name = t.value.trim() || 'Dancer'; });
     return;
   }
+  if (t.dataset.note) {
+    const n = cur().notes.find((x) => x.id === t.closest('[data-nid]').dataset.nid);
+    if (n) mutate(() => { n[t.dataset.note] = t.value.trim(); });
+    return;
+  }
+  if (t.dataset.bpm !== undefined) { mutate(() => M.setTempo(dance, +t.value || 120)); renderTempo(); return; }
   if (t.dataset.groupName) {
     const g = dance.groups.find((x) => x.id === t.dataset.groupName);
     if (g) mutate(() => { g.name = t.value.trim() || g.name; });
@@ -828,7 +1021,7 @@ document.addEventListener('change', (e) => {
     const k = t.dataset.fedit;
     mutate(() => {
       if (k === 'name') cur().name = t.value.trim() || `Formation ${ui.fi + 1}`;
-      else cur()[k] = clamp(+t.value || 0, k === 'transition' ? 0.25 : 0, 600);
+      else cur()[k] = clamp(Math.round((+t.value || 0) * 2) / 2, k === 'transition' ? 1 : 0, 512) * M.beatLen(dance);
     });
     return;
   }
@@ -841,6 +1034,55 @@ document.addEventListener('change', (e) => {
   }
   if (t.dataset.tm) { if (live) { commit(live); live = null; renderStoryboard(); } }
 });
+// Rhythm strip: click a count to cycle its speed; drag across counts to paint that speed.
+function setRhythm(fn) {
+  const prev = dance.formations[ui.fi - 1];
+  if (!prev) return;
+  const n = Math.max(1, Math.round(cts(prev.transition)));
+  mutate(() => {
+    for (const id of selIds()) {
+      const p = cur().pos[id];
+      p.tm = { w: fn(M.toRhythm(p.tm, n), n) };
+      if (p.tm.w.every((v) => v === 2)) delete p.tm;
+    }
+  });
+}
+let paint = null;
+document.addEventListener('pointerdown', (e) => {
+  const c = e.target.closest('.rcell');
+  if (!c) return;
+  e.preventDefault();
+  const i = +c.dataset.ri;
+  const v = (+c.dataset.v + 1) % 4;
+  paint = { before: snap(), v, done: new Set() };
+  paintCell(i);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!paint) return;
+  const c = document.elementFromPoint(e.clientX, e.clientY)?.closest('.rcell');
+  if (c) paintCell(+c.dataset.ri);
+});
+document.addEventListener('pointerup', () => {
+  if (!paint) return;
+  const before = paint.before;
+  paint = null;
+  for (const id of selIds()) { const p = cur().pos[id]; if (p.tm?.w?.every((v) => v === 2)) delete p.tm; }
+  commit(before);
+});
+function paintCell(i) {
+  if (paint.done.has(i)) return;
+  paint.done.add(i);
+  const n = Math.max(1, Math.round(cts(dance.formations[ui.fi - 1].transition)));
+  for (const id of selIds()) {
+    const p = cur().pos[id];
+    const w = M.toRhythm(p.tm, n);
+    w[i] = paint.v;
+    p.tm = { w };
+  }
+  const cell = $(`.rcell[data-ri="${i}"]`);
+  if (cell) { cell.dataset.v = paint.v; cell.querySelector('.rbar').style.height = `${(paint.v / 3) * 100}%`; }
+}
+
 // Live range edits for timing: update while dragging, commit on release.
 let live = null;
 document.addEventListener('input', (e) => {
@@ -947,7 +1189,8 @@ $('#formations-track').addEventListener('pointerdown', (e) => {
   const fi = +h.dataset.fi, key = h.dataset.resize;
   const before = snap(), x0 = e.clientX, v0 = dance.formations[fi][key];
   const move = (ev) => {
-    const v = clamp(Math.round((v0 + (ev.clientX - x0) / ui.pps) * 4) / 4, key === 'hold' ? 0 : 0.25, 600);
+    const beat = M.beatLen(dance);
+    const v = clamp(Math.round((v0 + (ev.clientX - x0) / ui.pps) / beat) * beat, key === 'hold' ? 0 : beat, 600);
     if (v === dance.formations[fi][key]) return;
     dance.formations[fi][key] = v;
     renderTimeline();
