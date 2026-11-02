@@ -24,4 +24,4 @@ Static site, no build step:
 python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
-three.js r170 (minified) is vendored in `vendor/`.
+three.js r170 loads from jsDelivr; its OrbitControls addon is vendored in `vendor/`.
