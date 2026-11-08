@@ -73,6 +73,8 @@ export class Stage {
     scene.add(this.floorGroup);
     this.guides = new THREE.Group();
     scene.add(this.guides);
+    this.warnings = new THREE.Group();
+    scene.add(this.warnings);
     this.handles = [];
 
     this.raycaster = new THREE.Raycaster();
@@ -101,6 +103,8 @@ export class Stage {
       this.time += dt;
       this.hooks.onTick?.(dt);
       this.animate(dt);
+      const pulse = 1 + Math.sin(this.time * 5) * 0.12;
+      for (const w of this.warnings.children) if (w.userData.pulse) w.scale.set(pulse, pulse, pulse);
       (this.view === '3d' ? this.cPersp : this.cOrtho).update();
       this.renderer.render(this.scene, this.camera);
       this.updateLabels();
@@ -347,6 +351,28 @@ export class Stage {
         const m = curveBetween(c, i, 0.5);
         sphere(m.x, m.z, 0.09, it.color, { handleFor: it.id, kind: 'add', index: i, x: m.x, z: m.z }, false);
       }
+    }
+  }
+
+  // Red rings where two dancers collide.
+  setWarnings(points) {
+    const g = this.warnings;
+    while (g.children.length) { const c = g.children.pop(); c.geometry?.dispose(); c.material?.dispose(); }
+    for (const p of points) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.34, 0.44, 40),
+        new THREE.MeshBasicMaterial({ color: '#D93025', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(p.x, 0.03, p.z);
+      ring.userData.pulse = true;
+      const fill = new THREE.Mesh(
+        new THREE.CircleGeometry(0.34, 40),
+        new THREE.MeshBasicMaterial({ color: '#D93025', transparent: true, opacity: 0.18, depthWrite: false }),
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.set(p.x, 0.025, p.z);
+      g.add(ring, fill);
     }
   }
 

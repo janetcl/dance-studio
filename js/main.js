@@ -17,6 +17,7 @@ const ui = {
   sel: new Set(), fi: 0, t: 0, playing: false, stopAt: null,
   view: '3d', paths: true, grid: true, labels: true, snap: true, pps: 32,
   metronome: false, taps: [], lastBeat: null,
+  collisions: [],
 };
 const hist = { past: [], future: [] };
 const audio = { el: new Audio(), name: null, url: null, duration: 0, peaks: null };
@@ -45,6 +46,7 @@ const stage = new Stage($('#stage'), $('#labels'), $('#marquee'), {
       f.pos[id].z = clamp(snapV(s.z + dz), -b.z, b.z);
     }
     refreshGuides();
+    checkCollisions();
   },
   onDragEnd(moved) {
     if (drag && moved) commit(drag.before);
@@ -74,6 +76,7 @@ const stage = new Stage($('#stage'), $('#labels'), $('#marquee'), {
     if (!e.wp?.[drag.index]) return;
     e.wp[drag.index] = { x: clamp(snapV(x), -b.x, b.x), z: clamp(snapV(z), -b.z, b.z) };
     refreshGuides();
+    checkCollisions();
   },
   onHandleEnd(moved) {
     if (drag) {
@@ -114,7 +117,12 @@ function commit(before, render = true) {
   hist.future = [];
   changed(render);
 }
+function checkCollisions() {
+  ui.collisions = M.findCollisions(dance);
+  renderCollisions();
+}
 function changed(render = true) {
+  ui.collisions = M.findCollisions(dance);
   ui.fi = clamp(ui.fi, 0, dance.formations.length - 1);
   const ids = new Set(dance.dancers.map((d) => d.id));
   for (const id of [...ui.sel]) if (!ids.has(id)) ui.sel.delete(id);
@@ -164,6 +172,7 @@ function goTo(i, { keepTime = false } = {}) {
   renderInspector();
   refreshGuides();
   renderMinimap();
+  renderCollisions();
   scrollCardIntoView();
 }
 function play({ from, stopAt } = {}) {
@@ -176,6 +185,7 @@ function play({ from, stopAt } = {}) {
     audio.el.play().catch(() => {});
   }
   stage.setGuides([]);
+  stage.setWarnings([]);
   renderPlayButton();
 }
 function pause() {
@@ -226,6 +236,7 @@ function renderAll() {
   renderTimeline();
   renderMinimap();
   refreshGuides();
+  renderCollisions();
   $('[data-action=undo]').disabled = !hist.past.length;
   $('[data-action=redo]').disabled = !hist.future.length;
   hydrateIcons();
@@ -266,6 +277,7 @@ function renderStoryboard() {
       <div class="fcard-top">
         <span class="num">${i + 1}</span>
         <span class="fname">${esc(f.name)}</span>
+        ${(() => { const n = ui.collisions.filter((c) => c.fi === i).length; return n ? `<span class="cbadge" title="${n} collision${n > 1 ? 's' : ''} in or moving into this formation">${n}</span>` : ''; })()}
         <span class="fdur">${fmtC(f.hold)}</span>
       </div>
       <div class="fthumb">${M.thumbSVG(dance, i, { w: 200, h: 110 })}</div>
@@ -507,6 +519,44 @@ function countSheet(f, ids) {
       ${rows ? `<ol class="notes">${rows}</ol>` : '<p class="muted" style="margin-bottom:8px">Write what happens on each count — “1-4 arm sweep”, “5-8 drop to floor”. Lines show as captions during playback.</p>'}
       <button class="btn small" data-action="note-add"><i data-icon="plus"></i>Add line${sel.size ? ` for ${sel.size === 1 ? esc(dance.dancers.find((d) => d.id === ids[0]).name) : `${sel.size} selected`}` : ''}</button>
     </section>`;
+}
+
+/* ---------- Collisions ---------- */
+const dname = (id) => dance.dancers.find((d) => d.id === id)?.name || '?';
+function collisionLabel(c) {
+  const f = dance.formations[c.fi];
+  if (c.kind === 'spot') return { where: `In “${f.name}”`, what: `${dname(c.a)} & ${dname(c.b)} are standing on top of each other` };
+  const segs = M.timing(dance).segs;
+  const ct = Math.floor((c.t - segs[c.fi - 1].holdEnd) / M.beatLen(dance)) + 1;
+  return { where: `Moving into “${f.name}” · count ${ct} of the move`, what: `${dname(c.a)} & ${dname(c.b)} run into each other` };
+}
+function renderCollisions() {
+  const list = ui.collisions;
+  const chip = $('#coll-chip');
+  chip.classList.toggle('bad', list.length > 0);
+  chip.innerHTML = list.length ? `<span class="cdot"></span>${list.length} collision${list.length > 1 ? 's' : ''}` : `${icon('check', 12)}No collisions`;
+  // Stage markers for the formation you're on (and the move into it)
+  if (!ui.playing) stage.setWarnings(list.filter((c) => c.fi === ui.fi).map((c) => ({ x: c.x, z: c.z })));
+  // Timeline marks
+  const pps = ui.pps;
+  $('#coll-marks').innerHTML = list.map((c) => `<span class="cmark" style="left:${16 + c.t * pps}px" title="${esc(collisionLabel(c).what)}"></span>`).join('');
+  // Storyboard badges
+  document.querySelectorAll('.fcard').forEach((el) => {
+    const n = list.filter((c) => c.fi === +el.dataset.fi).length;
+    let b = el.querySelector('.cbadge');
+    if (!n) { b?.remove(); return; }
+    if (!b) { b = document.createElement('span'); b.className = 'cbadge'; el.querySelector('.fdur').before(b); }
+    b.textContent = n;
+  });
+  if (!$('#coll-pop').hidden) renderCollisionList();
+}
+function renderCollisionList() {
+  const list = ui.collisions;
+  $('#coll-pop').innerHTML = list.length ? `
+    <div class="coll-head"><h4>${list.length} collision${list.length > 1 ? 's' : ''}</h4><button class="btn small primary" data-action="coll-fix-all">Fix all</button></div>
+    <p class="muted">Dancers closer than ${M.MIN_GAP} m. Partners in a pair or group are allowed to touch.</p>
+    <ol class="coll-list">${list.map((c, i) => { const l = collisionLabel(c); return `<li><div><b>${esc(l.what)}</b><span>${esc(l.where)}</span></div><div class="btn-row"><button class="btn small ghost" data-action="coll-show" data-ci="${i}">Show</button><button class="btn small" data-action="coll-fix" data-ci="${i}">Fix</button></div></li>`; }).join('')}</ol>`
+    : `<div class="coll-head"><h4>No collisions</h4></div><p class="muted">Nobody runs into anyone. Dancers closer than ${M.MIN_GAP} m count as a collision; partners in a pair or group are allowed to touch.</p>`;
 }
 
 /* ---------- Minimap ---------- */
@@ -798,6 +848,31 @@ const actions = {
     const same = sel.length && n.who?.length === sel.length && sel.every((id) => n.who.includes(id));
     n.who = sel.length && !same ? sel : [];
   }),
+  'coll-pop': () => { const p = $('#coll-pop'); p.hidden = !p.hidden; if (!p.hidden) renderCollisionList(); },
+  'coll-show': (el) => {
+    const c = ui.collisions[+el.dataset.ci];
+    if (!c) return;
+    if (ui.playing) pause();
+    goTo(c.fi);
+    if (c.kind === 'move') ui.t = c.t;
+    ui.sel = new Set([c.a, c.b]);
+    selectionChanged();
+    $('#coll-pop').hidden = true;
+  },
+  'coll-fix': (el) => {
+    const c = ui.collisions[+el.dataset.ci];
+    if (!c) return;
+    let res;
+    mutate(() => { res = M.fixCollision(dance, c); if (res) Object.assign(dance, res.copy); });
+    if (res) toast(`Fixed ${dname(c.a)} & ${dname(c.b)} — one of them ${res.label}`, true);
+    else toast('No simple fix found — try moving one of them by hand, or changing the formation.');
+  },
+  'coll-fix-all': () => {
+    let r;
+    mutate(() => { r = M.fixAll(dance); });
+    toast(r.left ? `Fixed ${r.fixed}; ${r.left} need a manual tweak` : `Fixed ${r.fixed} collision${r.fixed === 1 ? '' : 's'}`, true);
+    renderCollisionList();
+  },
   'tempo-pop': () => { const p = $('#tempo-pop'); p.hidden = !p.hidden; if (!p.hidden) renderTempo(); },
   tap: () => {
     const now = performance.now();
@@ -950,6 +1025,7 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!e.target.closest('.menu-wrap')) closeMenus();
   if (!e.target.closest('#tempo-pop') && !e.target.closest('[data-action=tempo-pop]')) $('#tempo-pop').hidden = true;
+  if (!e.target.closest('#coll-pop') && !e.target.closest('[data-action=coll-pop]')) $('#coll-pop').hidden = true;
   if (!e.target.closest('.color-pop') && !e.target.closest('[data-action=color]')) $('.color-pop')?.remove();
   if (el && actions[el.dataset.action] && el.type !== 'checkbox') { actions[el.dataset.action](el); return; }
 

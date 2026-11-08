@@ -78,6 +78,10 @@
           <button class="chip on" data-toggle="snap" title="Snap to a 0.25 m grid">Snap</button>
         </div>
       </div>
+      <div class="coll-wrap">
+        <button class="chip coll-chip" id="coll-chip" data-action="coll-pop" title="Check for dancers running into each other">No collisions</button>
+        <div class="coll-pop" id="coll-pop" hidden></div>
+      </div>
       <button class="minimap" id="minimap" title="Top view — click to switch"><svg id="minimap-svg" viewBox="0 0 200 140" aria-label="Top-down map of the stage"></svg><span>Top view</span></button>
       <button class="icon-btn floating recenter" data-action="recenter" title="Reset camera"><i data-icon="target"></i></button>
       <div class="stage-hint" id="stage-hint">Drag dancers to move · Shift-click to add · Drag the floor to box-select · Right-drag or ⌥-drag to orbit</div>
@@ -124,6 +128,7 @@
         <div class="tl-inner" id="tl-inner">
           <div class="ruler" id="ruler"></div>
           <div class="track formations-track" id="formations-track"></div>
+          <div class="coll-marks" id="coll-marks"></div>
           <div class="track music-track" id="music-track"><canvas id="wave"></canvas><div class="music-empty" id="music-empty">No music yet. Add a song to play along, or just use the clock.</div></div>
           <div class="playhead" id="playhead"><span></span></div>
         </div>

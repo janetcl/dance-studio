@@ -14,6 +14,7 @@ A choreography tool for planning formations on a 3D stage — the redesign of my
 - **Rhythm per count** — each move has a strip with one cell per count; set each count to Hold, Slow, Medium or Fast (e.g. slow 2, fast 4, slow 2). Presets for Even, Slow–fast–slow, Wait then go, and more; Ripple for canons.
 - **Travel styles** — Walk, Run, Chassé, Turn, Leap, Floor, and which way dancers face while moving. The mannequins perform them.
 - **Count sheets** — write what happens on each count per formation (“1-4 arm sweep”), for everyone or specific dancers. Lines show as captions during playback.
+- **Collision check** — flags dancers standing on top of each other or running into each other mid-move (closer than 0.55 m), on the stage, the timeline and the formation cards. One click fixes a collision by bending a path or shifting someone's timing; “Fix all” does every one. Partners in a pair/group are allowed to touch.
 - **Pairs & groups** — partner dancers up so they share one color (matching or shades).
 - **Shapes** — Line, Two rows, V, Circle, Diagonal, Grid, Diamond, Arc, Spiral; Mirror, Tighter, Wider.
 - **Music** — add a song, see its waveform, play the dance in sync.

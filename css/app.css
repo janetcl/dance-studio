@@ -567,3 +567,29 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px soli
 .cap-line em { font-style: normal; color: rgba(255,255,255,.7); font-size: 12.5px; }
 @media (max-width: 900px) { .path-hint { max-width: calc(100% - 160px); } }
 .path-hint[hidden], .caption[hidden], .tempo-pop[hidden] { display: none; }
+
+/* ---------- Collisions ---------- */
+.coll-wrap { position: absolute; right: 56px; top: 12px; z-index: 4; }
+.coll-chip { display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.05); color: #1E7B4E; border-color: #BFE3CF; }
+.coll-chip svg { width: 12px; height: 12px; }
+.coll-chip.bad { color: #B3261E; border-color: #F2C4C0; background: #FDF0EF; font-weight: 600; }
+.coll-chip.on::before, .coll-chip::before { display: none; }
+.cdot { width: 7px; height: 7px; border-radius: 50%; background: #D93025; box-shadow: 0 0 0 3px rgba(217,48,37,.2); }
+.coll-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); width: 340px; max-height: 420px; overflow: auto; padding: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.coll-pop[hidden] { display: none; }
+.coll-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.coll-head h4 { margin: 0; font-size: 14px; }
+.coll-pop .muted { font-size: 12px; margin-bottom: 8px; }
+.coll-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.coll-list li { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+.coll-list li > div:first-child { display: grid; gap: 2px; }
+.coll-list b { font-size: 13px; font-weight: 600; }
+.coll-list span { font-size: 12px; color: var(--ink-3); }
+.cbadge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #D93025; color: #fff; font-size: 11px; font-weight: 600; display: inline-grid; place-items: center; }
+.coll-marks { position: absolute; left: 0; right: 0; top: 30px; height: 0; pointer-events: none; }
+.cmark { position: absolute; top: 4px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #D93025; box-shadow: 0 0 0 2px var(--surface); }
+.recenter { z-index: 4; }
+@media (max-width: 900px) { .coll-pop { width: min(340px, calc(100vw - 32px)); } }

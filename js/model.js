@@ -430,7 +430,7 @@ export const SHAPES = {
   spiral: {
     label: 'Spiral',
     pts: (n, s) => range(n).map((i) => {
-      const a = i * 0.95, r = 0.35 + i * s * 0.24;
+      const a = i * 0.9, r = 0.5 + i * s * 0.3;
       return { x: r * Math.sin(a), z: r * Math.cos(a) };
     }),
   },
@@ -512,6 +512,135 @@ export function stagger(d, fi, ids, { spread = 0.6, order = 'x' } = {}) {
   });
 }
 
+/* ---------------- Collisions ---------------- */
+// Two dancers closer than this (center to center, meters) are touching.
+export const MIN_GAP = 0.55;
+
+function sameGroup(d, a, b) {
+  const A = d.dancers.find((x) => x.id === a), B = d.dancers.find((x) => x.id === b);
+  return !!(A?.group && A.group === B?.group);
+}
+
+// Returns [{ kind: 'spot'|'move', fi, a, b, t, x, z }] — fi is the formation (for moves: the one being moved into).
+export function findCollisions(d, { only = null, steps = 60 } = {}) {
+  const out = [];
+  const { segs } = timing(d);
+  const ids = d.dancers.map((x) => x.id);
+  const pairs = [];
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) if (!sameGroup(d, ids[i], ids[j])) pairs.push([ids[i], ids[j]]);
+  d.formations.forEach((f, i) => {
+    if (only !== null && only !== i) return;
+    for (const [a, b] of pairs) {
+      const p = f.pos[a], q = f.pos[b];
+      if (!p || !q || p.on === false || q.on === false) continue;
+      if (Math.hypot(p.x - q.x, p.z - q.z) < MIN_GAP) out.push({ kind: 'spot', fi: i, a, b, t: segs[i].start, x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 });
+    }
+  });
+  for (let i = 0; i < d.formations.length - 1; i++) {
+    if (only !== null && only !== i + 1) continue;
+    const f = d.formations[i], g = d.formations[i + 1];
+    const t0 = segs[i].holdEnd, T = f.transition;
+    const seen = new Set();
+    for (let k = 1; k < steps; k++) {
+      const t = t0 + (T * k) / steps;
+      const fr = sample(d, t);
+      for (const [a, b] of pairs) {
+        const key = a + b;
+        if (seen.has(key)) continue;
+        const p = fr.get(a), q = fr.get(b);
+        if (!p || !q || p.alpha < 0.5 || q.alpha < 0.5) continue;
+        // Already overlapping at both ends is a 'spot' problem, not a path problem.
+        const sa = f.pos[a], sb = f.pos[b], ea = g.pos[a], eb = g.pos[b];
+        if (Math.hypot(sa.x - sb.x, sa.z - sb.z) < MIN_GAP || Math.hypot(ea.x - eb.x, ea.z - eb.z) < MIN_GAP) continue;
+        if (Math.hypot(p.x - q.x, p.z - q.z) < MIN_GAP) {
+          seen.add(key);
+          out.push({ kind: 'move', fi: i + 1, a, b, t, x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// Try small changes to one of the two dancers and keep the one that clears the most collisions in that move.
+export function fixCollision(d, c) {
+  const list = (dd) => findCollisions(dd, { only: c.fi });
+  const base = list(d).length;
+  let best = null;
+  // Accept a change if it clears this pair and doesn't make the move worse overall.
+  const consider = (mutateFn, cost, label) => {
+    const copy = JSON.parse(JSON.stringify(d));
+    mutateFn(copy);
+    const after = list(copy);
+    const pairStill = after.some((x) => x.kind === c.kind && ((x.a === c.a && x.b === c.b) || (x.a === c.b && x.b === c.a)));
+    if (pairStill || after.length > base) return;
+    const score = after.length * 100 + cost;
+    if (!best || score < best.score) best = { score, copy, label };
+  };
+  if (c.kind === 'spot') {
+    // Nudge one dancer to the nearest free spot.
+    for (const id of [c.b, c.a]) {
+      for (const r of [0.6, 0.9, 1.2]) {
+        for (let k = 0; k < 8; k++) {
+          const ang = (k / 8) * Math.PI * 2;
+          consider((dd) => { const p = dd.formations[c.fi].pos[id]; p.x = round(p.x + r * Math.sin(ang)); p.z = round(p.z + r * Math.cos(ang)); }, r, 'moved apart');
+        }
+      }
+    }
+  } else {
+    const prev = d.formations[c.fi - 1];
+    const n = Math.max(1, Math.round(prev.transition / beatLen(d)));
+    const fr = sample(d, c.t);
+    for (const id of [c.b, c.a]) {
+      const me = fr.get(id);
+      // Reroute: a bend beside the collision point, either side.
+      const perp = me.dir + Math.PI / 2;
+      for (const off of [0.6, -0.6, 0.9, -0.9, 1.3, -1.3, 1.8, -1.8]) {
+        const pt = { x: round(me.x + off * Math.sin(perp)), z: round(me.z + off * Math.cos(perp)) };
+        consider((dd) => {
+          const e = dd.formations[c.fi].pos[id], a = dd.formations[c.fi - 1].pos[id];
+          const wp = controlPts(a, e, e).slice(1, -1);
+          // Insert where it adds the least distance.
+          const all = [a, ...wp, e];
+          let bi = 0, bc = Infinity;
+          for (let k = 0; k < all.length - 1; k++) {
+            const add = Math.hypot(all[k].x - pt.x, all[k].z - pt.z) + Math.hypot(all[k + 1].x - pt.x, all[k + 1].z - pt.z) - Math.hypot(all[k].x - all[k + 1].x, all[k].z - all[k + 1].z);
+            if (add < bc) { bc = add; bi = k; }
+          }
+          wp.splice(bi, 0, pt);
+          e.wp = wp;
+          delete e.h;
+        }, Math.abs(off) * 1.2, 'rerouted');
+      }
+      // Retime: wait for the other dancer to pass, or get there first.
+      const wait = (k) => Array.from({ length: n }, (_, i) => (i < k ? 0 : 3));
+      const early = (k) => Array.from({ length: n }, (_, i) => (i < n - k ? 3 : 0));
+      for (const k of [Math.ceil(n / 4), Math.ceil(n / 2), Math.ceil((3 * n) / 4)]) {
+        if (k >= n) continue;
+        consider((dd) => { dd.formations[c.fi].pos[id].tm = { w: wait(k) }; }, 1 + k * 0.4, 'waits');
+        consider((dd) => { dd.formations[c.fi].pos[id].tm = { w: early(k) }; }, 1.2 + k * 0.4, 'goes early');
+      }
+    }
+  }
+  if (!best) return null;
+  return best;
+}
+
+// Fix collisions one at a time until none are left (or nothing more helps).
+export function fixAll(d, maxRounds = 60) {
+  let fixed = 0;
+  const stuck = new Set();
+  for (let r = 0; r < maxRounds; r++) {
+    const cs = findCollisions(d).filter((c) => !stuck.has(c.kind + c.fi + c.a + c.b));
+    if (!cs.length) break;
+    const res = fixCollision(d, cs[0]);
+    if (!res) { stuck.add(cs[0].kind + cs[0].fi + cs[0].a + cs[0].b); continue; }
+    Object.assign(d, res.copy);
+    fixed++;
+  }
+  return { fixed, left: findCollisions(d).length };
+}
+
 /* ---------------- Demo ---------------- */
 
 export function demoDance() {
@@ -560,6 +689,7 @@ export function demoDance() {
   d.formations[2].notes = [L('1-4', 'Hold hands, circle walks clockwise'), L('5-8', 'Release, arms overhead'), L('5-8', 'Lift', [d.dancers[3].id, d.dancers[4].id])];
   d.formations[3].notes = [L('1-8', 'Unison phrase A (from rehearsal video, 0:45)')];
   d.formations[4].notes = [L('1-4', 'Ripple from center out'), L('5-8', 'Final pose — reach up and freeze')];
+  fixAll(d);
   return d;
 }
 
