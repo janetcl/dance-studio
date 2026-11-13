@@ -1,21 +1,24 @@
 // Basketball players: the Dance Studio mannequin in a sleeveless jersey and shorts,
 // with its own skin tone, hair, height and jersey number.
 import * as THREE from 'three';
-import { Person } from '../js/people.js?v=20261113u';
+import { Person } from '../js/people.js?v=20261113v';
 
 const tailGeo = new THREE.CapsuleGeometry(0.032, 0.17, 6, 10);
 const longGeo = new THREE.CapsuleGeometry(0.1, 0.16, 6, 14);
 const numGeo = new THREE.PlaneGeometry(0.17, 0.17);
+const bigNumGeo = new THREE.PlaneGeometry(0.26, 0.26);
+export const JERSEY = { style: new URLSearchParams(location.search).get('jersey') || 'classic' };
 
-function numberTexture(num, color, trim) {
+function numberTexture(num, color, trim, big) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d');
-  g.font = '800 92px "Geist", "Arial Black", Impact, sans-serif';
+  g.font = big ? '900 104px "Arial Black", Impact, "Geist", sans-serif' : '800 92px "Geist", "Arial Black", Impact, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.lineJoin = 'round';
-  if (trim) { g.lineWidth = 12; g.strokeStyle = trim; g.strokeText(num, 64, 70); }
+  const edge = trim || (big ? (/^#(?:F|E|D)/i.test(color) ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.9)') : null);
+  if (edge) { g.lineWidth = big ? 14 : 12; g.strokeStyle = edge; g.strokeText(num, 64, 70); }
   g.fillStyle = color;
   g.fillText(num, 64, 70);
   const t = new THREE.CanvasTexture(c);
@@ -64,8 +67,9 @@ export class Player extends Person {
     this.numMats = [];
     for (const side of [1, -1]) {
       const m = new THREE.MeshStandardMaterial({ transparent: true, roughness: 0.6, depthWrite: false });
-      const p = new THREE.Mesh(numGeo, m);
-      p.position.set(0, 0.26, side * 0.1);
+      const big = JERSEY.style === 'big';
+      const p = new THREE.Mesh(big ? bigNumGeo : numGeo, m);
+      p.position.set(0, big ? 0.28 : 0.26, side * (big ? 0.104 : 0.1));
       if (side < 0) p.rotation.y = Math.PI;
       this.upper.add(p);
       this.numMats.push(m);
@@ -79,7 +83,7 @@ export class Player extends Person {
     this.mats.outfit.color.set(kit.jersey);
     this.mats.pants.color.set(kit.shorts || kit.jersey);
     this.disc.material.color.set(kit.jersey);
-    const tex = numberTexture(String(this.look.label ?? ''), kit.num, kit.trim);
+    const tex = numberTexture(String(this.look.label ?? ''), kit.num, kit.trim, JERSEY.style === 'big');
     for (const m of this.numMats) { if (m.map) m.map.dispose(); m.map = tex; m.needsUpdate = true; }
   }
 }
