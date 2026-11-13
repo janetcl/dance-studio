@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114q';
-import { QUIZ } from './quiz.js?v=20261114q';
+import { CourtScene, W } from './scene.js?v=20261114r';
+import { QUIZ } from './quiz.js?v=20261114r';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114q';
+import { PRESETS } from './plays.js?v=20261114r';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114q';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114q';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114q';
+} from './model.js?v=20261114r';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114r';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114r';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -85,6 +85,7 @@ function setPlaying(on) {
 }
 
 // ---------- Scene ----------
+performance.mark('court:modules');
 const scene = new CourtScene($('stage'), $('labels'), {
   onPick(id) { if (ui.mode === 'watch') return; ui.sel = id; if (ui.playing) setPlaying(false); renderSide(); },
   onDragStart(d) {
@@ -873,6 +874,7 @@ function frame(nowMs) {
   $('time-now').textContent = fmt(ui.T);
   $('clock').textContent = Math.max(0, 24 - ui.T).toFixed(1);
   if (ui.mode === 'watch') { const pf = $('pl-fill'); if (pf) pf.style.width = `${Math.min(100, (ui.T / total) * 100)}%`; }
+  if (!window.__ff) { window.__ff = performance.now(); performance.mark('court:first-frame'); document.body.classList.add('ready'); }
   if (!ui.manual) requestAnimationFrame(frame);
 }
 
@@ -1325,6 +1327,7 @@ window.__court = {
 
 // ---------- Boot ----------
 async function boot() {
+  performance.mark('court:scene');
   const ts = new URLSearchParams(location.search).get('tags');
   if (ts) document.body.dataset.tags = ts;
   hydrateIcons();

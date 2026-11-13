@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261114q';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114q';
+import { Player } from './players.js?v=20261114r';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114r';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -86,16 +86,18 @@ function courtTexture(look) {
 }
 
 function ballTexture() {
-  // A real eight-panel basketball, drawn per pixel on the sphere: two great-circle seams that
-  // cross at right angles, two curved seams (small circles around the poles), pebbled leather.
-  const Wd = 1024, Ht = 512;
+  // A real eight-panel basketball, drawn per pixel on the sphere. Two seams run all the way
+  // round in perpendicular planes (x = 0 and z = 0), crossing at the poles (±y). The two curved
+  // seams sit either side of the x = 0 seam: they pinch in close to it around the middle of
+  // the ball and swing wide near the poles (|x| = c + k·y²), so face-on they read as ")|(".
+  const Wd = 768, Ht = 384;
   const c = document.createElement('canvas'); c.width = Wd; c.height = Ht;
   const g = c.getContext('2d');
   const img = g.createImageData(Wd, Ht);
   const bump = document.createElement('canvas'); bump.width = Wd; bump.height = Ht;
   const bg = bump.getContext('2d');
   const bimg = bg.createImageData(Wd, Ht);
-  const seamW = 0.016, curve = 0.72;
+  const seamW = 0.014, cc = 0.32, ck = 0.83;
   const hash = (x, y) => { const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); };
   for (let r = 0; r < Ht; r++) {
     const th = (r + 0.5) / Ht * Math.PI, st = Math.sin(th), y = Math.cos(th);
@@ -103,11 +105,11 @@ function ballTexture() {
       const ph = (q + 0.5) / Wd * Math.PI * 2;
       const x = -Math.cos(ph) * st, z = Math.sin(ph) * st;
       // Distance to the nearest seam on the unit sphere.
-      const d = Math.min(Math.abs(x), Math.abs(z), Math.abs(Math.abs(y) - curve) * 1.2);
+      const d = Math.min(Math.abs(x), Math.abs(z), Math.abs(Math.abs(x) - cc - ck * y * y) / Math.sqrt(1 + 4 * ck * ck * y * y));
       const seam = Math.max(0, Math.min(1, 1 - (d - seamW) / 0.006));
       const groove = Math.max(0, Math.min(1, 1 - (d - seamW) / 0.03));
       // Pebbles: small bumps on a fine grid in angle space, sized to the sphere.
-      const px = q * st * 0.9, py = r * 0.9;
+      const px = q * st * 1.2, py = r * 1.2;
       const cx = Math.floor(px / 3), cy = Math.floor(py / 3);
       const fx = px / 3 - cx - 0.5, fy = py / 3 - cy - 0.5;
       const pebble = Math.max(0, 1 - (fx * fx + fy * fy) * 3.2) * (0.7 + 0.3 * hash(cx, cy));
