@@ -1,13 +1,14 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene } from './scene.js?v=20261113e';
-import { PRESETS } from './plays.js?v=20261113e';
+import { CourtScene } from './scene.js?v=20261113g';
+import { PRESETS } from './plays.js?v=20261113g';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113e';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113e';
+} from './model.js?v=20261113g';
+import { Recorder, pickMime, cinematicCamera } from './recorder.js?v=20261113g';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113g';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -439,13 +440,23 @@ let lastFrame = performance.now(), clockNow = 0;
 function frame(nowMs) {
   const real = Math.min(0.05, (nowMs - lastFrame) / 1000 || 0);
   lastFrame = nowMs;
-  const dt = ui.fixedDt || real;
+  // While recording, follow the wall clock so the video always has the right length.
+  const dt = ui.fixedDt || (ui.rec ? Math.min(0.25, (nowMs - (frame.prev || nowMs)) / 1000 || real) : real);
+  frame.prev = nowMs;
   clockNow += dt;
   const { total } = timing(play);
   if (ui.T > total) ui.T = total;
+  if (ui.rec) {
+    const R = ui.rec;
+    R.t += dt;
+    if (!R.started && R.t >= R.lead) { R.started = true; ui.T = 0; ui.snap = true; setPlaying(true); }
+    if (R.started && ui.T >= total) { R.tail += dt; if (R.tail > 1.4 && !R.finishing) finishExport(); }
+    if (R.opts.camera === 'cinematic') cinematicCamera(scene.camera, scene.controls.target, R.t);
+    const st = $('rec-time'); if (st) st.textContent = `${Math.min(R.t, R.total).toFixed(1)} / ${R.total.toFixed(1)} s`;
+  }
   if (ui.playing) {
     if (ui.T < total) ui.T = Math.min(total, ui.T + dt * ui.speed);
-    else if (ui.mode === 'watch' && ui.autoplay && ui.queue.length > 1) {
+    else if (ui.mode === 'watch' && ui.autoplay && ui.queue.length > 1 && !ui.rec) {
       // Hold the last frame, show "Up next", then move on.
       ui.endHold += dt;
       const up = $('upnext');
@@ -476,7 +487,12 @@ function frame(nowMs) {
     $('beat-now').textContent = showBeat < 0 ? 'Start' : `Beat ${showBeat + 1}`;
   }
   scene.overlay.material.opacity = ui.playing ? Math.min(1, f.t * 6) * (ui.T >= total ? Math.max(0, 1 - ui.endHold * 2) : 1) : 1;
-  scene.update(f, { dt, now: clockNow, snap: ui.snap, selected: ui.sel, showDefense: ui.defense && play.defense !== 'none' });
+  scene.update(f, { dt, now: clockNow, snap: ui.snap, selected: ui.rec ? null : ui.sel, showDefense: ui.defense && play.defense !== 'none' });
+  if (ui.rec && ui.rec.recorder) {
+    const b = ui.rec.started ? play.beats[f.i] : null;
+    ui.rec.recorder.frame({ caption: b ? (b.text || beatSummary(f.i)) : '', beatLabel: b ? `Beat ${f.i + 1} · ${b.name}` : '', kits: teamsOf(play), elapsed: ui.rec.t });
+  }
+  if (ui.commentary && ui.playing) commentate(f);
   ui.snap = false;
   $('playhead').style.left = `calc(${(ui.T / total) * 100}% - 1px)`;
   $('time-now').textContent = fmt(ui.T);
@@ -561,6 +577,9 @@ document.addEventListener('click', async (e) => {
     case 'theme': lookChange(() => { play.theme = t.dataset.v; delete play.teams; }); closePops(); break;
     case 'colors-pop': togglePop(); break;
     case 'playbook': openPlaybook(); break;
+    case 'export': openExport(); break;
+    case 'export-go': startExport(); break;
+    case 'export-cancel': cancelExport(); break;
     case 'tour': startTour(); break;
     case 'tour-next': tourAt++; showTour(); break;
     case 'tour-skip': endTour(); break;
@@ -715,6 +734,106 @@ async function share() {
   const code = await encodeShare(play);
   const url = `${location.origin}${location.pathname}#p=${code}`;
   try { await navigator.clipboard.writeText(url); toast('Link copied. Anyone with it can open a copy of this play.'); } catch { prompt('Copy this link', url); }
+}
+
+// ---------- Export a video ----------
+function openExport() {
+  const mime = pickMime();
+  $('export-note').textContent = mime
+    ? `Plays the whole play once in real time while it records (about ${Math.round(timing(play).total + 3)} seconds), then downloads ${mime.includes('mp4') ? 'an MP4' : 'a WebM'} file. Keep this tab open until it finishes.`
+    : 'This browser can’t record video. Try Chrome, Edge or Safari on a computer.';
+  $('export-go').disabled = !mime;
+  $('export').showModal();
+}
+function startExport() {
+  const fd = new FormData($('export-form'));
+  const opts = { camera: fd.get('camera'), captions: fd.get('captions') === 'on', numbers: fd.get('numbers') === 'on' };
+  $('export').close();
+  closePops();
+  const mime = pickMime();
+  if (!mime) return;
+  setPlaying(false);
+  ui.sel = null;
+  ui.T = 0; ui.snap = true; ui.beat = -1; ui.endHold = 0;
+  const recorder = new Recorder(scene);
+  const lead = opts.camera === 'cinematic' ? 1.4 : 0.8;
+  ui.rec = { opts, recorder, t: 0, tail: 0, lead, started: false, total: lead + timing(play).total + 1.4, saved: { loop: ui.loop, damping: scene.controls.enableDamping, cam: scene.camera.position.clone(), target: scene.controls.target.clone() } };
+  ui.loop = false;
+  scene.controls.enableDamping = false;
+  scene.controls.enabled = false;
+  $('app').classList.add('recording');
+  $('rec-status').hidden = false;
+  renderAll();
+  recorder.start({ mime, title: play.name, captions: opts.captions, numbers: opts.numbers });
+}
+function restoreAfterExport() {
+  const R = ui.rec;
+  ui.rec = null;
+  ui.loop = R.saved.loop;
+  scene.controls.enableDamping = R.saved.damping;
+  scene.controls.enabled = true;
+  scene.camera.position.copy(R.saved.cam);
+  scene.controls.target.copy(R.saved.target);
+  scene.controls.update();
+  $('app').classList.remove('recording');
+  $('rec-status').hidden = true;
+  setPlaying(false);
+}
+async function finishExport() {
+  const R = ui.rec;
+  R.finishing = true;
+  const blob = await R.recorder.stop();
+  restoreAfterExport();
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const name = (play.name || 'play').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'play';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}${R.opts.camera === 'cinematic' ? '-cinematic' : ''}.${ext}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  toast(`Saved ${a.download}`);
+}
+function cancelExport() { if (!ui.rec) return; ui.rec.recorder.cancel(); restoreAfterExport(); toast('Recording cancelled'); }
+
+// ---------- Commentary (the browser's built-in voice) ----------
+const POS_NAME = { PG: 'the point guard', SG: 'the two guard', SF: 'the three', PF: 'the four', C: 'the big man' };
+const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
+let spoke = { beat: -1, made: false, T: -1 };
+function say(text, { interrupt = true } = {}) {
+  if (!('speechSynthesis' in window)) return;
+  if (interrupt) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const voices = speechSynthesis.getVoices();
+  u.voice = voices.find((v) => /en-US/i.test(v.lang) && /(Daniel|Alex|Fred|Google US English|Guy|Davis|Aaron)/i.test(v.name)) || voices.find((v) => /^en/i.test(v.lang)) || null;
+  u.rate = 1.12; u.pitch = 0.92; u.volume = 1;
+  speechSynthesis.speak(u);
+}
+function callBeat(i) {
+  const b = play.beats[i];
+  const name = (id) => { const p = playerOf(id); if (!p) return ''; return Math.random() < 0.35 && p.side === 'O' && POS_NAME[p.pos] ? POS_NAME[p.pos] : 'number ' + p.num; };
+  const bits = [];
+  const ids = play.players.filter((p) => p.side === 'O').map((p) => p.id);
+  for (const id of ids) {
+    const a = actionOf(play, i, id);
+    if (a === 'screen') bits.push(pickOne([`${name(id)} sets the pick`, `${name(id)} with the screen`, `big screen from ${name(id)}`]));
+  }
+  for (const id of ids) {
+    const a = actionOf(play, i, id);
+    if (a === 'cut') bits.push(pickOne([`${name(id)} cuts hard`, `here comes ${name(id)}`, `${name(id)} on the move`]));
+    if (a === 'dribble') bits.push(pickOne([`${name(id)} attacks`, `${name(id)} puts it on the floor`, `${name(id)} gets downhill`]));
+  }
+  const h = holderAt(play, i), ev = b.ball;
+  if (ev && h && ev.kind === 'pass') bits.push(pickOne([`${name(h)} finds ${name(ev.to)}`, `${name(h)} swings it to ${name(ev.to)}`, `nice feed to ${name(ev.to)}`]));
+  if (ev && h && ev.kind === 'shot') bits.push(pickOne([`${name(h)} rises up`, `${name(h)} lets it fly`, `${name(h)} for the shot`]));
+  if (!bits.length) return i === 0 ? pickOne(['Here we go.', `${name(h || 'o1')} brings it up.`, 'They set it up.']) : '';
+  return bits.slice(0, 3).join('... ') + (ev && ev.kind === 'shot' ? '...' : '.');
+}
+function commentate(f) {
+  if (ui.T < spoke.T - 0.5) spoke = { beat: -1, made: false, T: ui.T };
+  spoke.T = ui.T;
+  if (f.i !== spoke.beat) { spoke.beat = f.i; spoke.made = false; const line = callBeat(f.i); if (line) say(line); }
+  const ev = f.ev;
+  if (ev && ev.kind === 'shot' && !spoke.made && f.t > ev.t1) { spoke.made = true; say(pickOne(['Bang!', 'Count it!', 'Got it!', 'Nothing but net!', 'Money!']), { interrupt: false }); }
 }
 
 // ---------- First-visit tour ----------
