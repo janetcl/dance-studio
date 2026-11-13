@@ -1,16 +1,16 @@
 // Cutline editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261115t';
-import { QUIZ } from './quiz.js?v=20261115t';
+import { CourtScene, W } from './scene.js?v=20261115u';
+import { QUIZ } from './quiz.js?v=20261115u';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261115t';
+import { PRESETS } from './plays.js?v=20261115u';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261115t';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115t';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261115t';
+} from './model.js?v=20261115u';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115u';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115u';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -698,6 +698,7 @@ function quizTick(f, dt) {
     const e = k * k * (3 - 2 * k);
     f.pos[id] = [f.pos[id][0] + (d.to[0] - f.pos[id][0]) * e, f.pos[id][1] + (d.to[1] - f.pos[id][1]) * e];
   }
+  if (q.cam === 'fly' && q.fly) { flyTick(q, dt); return; }
   if (q.cam !== 'pov') { for (const x of scene.people.values()) x.setOpacity(1); return; }
   const uv = f.pos[q.scene.you], me = scene.people.get(q.scene.you);
   if (!uv || !me) return;
@@ -797,16 +798,46 @@ function answerQuiz(k) {
     // Show the right version from above: your movement added if the play needs it, slowed down, arrows on.
     if (sc.answerMoves) { const m = play.beats[sc.freeze[0]].moves; m[sc.you] = { ...(m[sc.you] || {}), ...clone(sc.answerMoves) }; }
     ui.arrows = true;
-    quizCam('broadcast');
     ui.speed = 0.75; $('speed').textContent = '0.75×';
-    ui.T = Math.max(0, q.freezeT - 1.2); ui.snap = true;
     renderQuizList();
-    setPlaying(true);
+    flyToAnswer(q);
   };
   if (!slow) { reveal(); settle(); return; }
   setTimeout(reveal, skipped ? 0 : 170);
   setTimeout(settle, skipped ? 750 : 1050);
 }
+// From your eyes to the broadcast view in one smooth move, with the play held at the freeze;
+// then the right read plays on from that same moment (no rewind, nobody jumps).
+function flyToAnswer(q) {
+  const cam = scene.camera, ctl = scene.controls;
+  const from = { pos: cam.position.clone(), tgt: ctl.target.clone(), fov: cam.fov };
+  // Where the broadcast camera will sit (fitted to this screen), then put the camera back.
+  povOff(); scene.setView('broadcast');
+  const to = { pos: cam.position.clone(), tgt: ctl.target.clone(), fov: cam.fov };
+  cam.position.copy(from.pos); ctl.target.copy(from.tgt); cam.fov = from.fov; cam.updateProjectionMatrix(); cam.lookAt(from.tgt);
+  ctl.enabled = false;
+  // Players faded for the eye-level view fade back in as the camera rises.
+  const opac = new Map();
+  for (const [id, x] of scene.people) { const d = Math.hypot(x.root.position.x - from.pos.x, x.root.position.z - from.pos.z); opac.set(id, id === q.scene.you ? 0 : d < 1.8 ? 0 : d < 3.2 ? (d - 1.8) / 1.4 : 1); }
+  q.cam = 'fly';
+  q.fly = { t: 0, dur: calm() ? 0 : 1.15, from, to, opac };
+  document.querySelectorAll('[data-qcam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.qcam === 'broadcast')));
+}
+function flyTick(q, dt) {
+  const fl = q.fly, cam = scene.camera, ctl = scene.controls;
+  fl.t += dt;
+  const k = fl.dur ? Math.min(1, fl.t / fl.dur) : 1;
+  const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; // ease in-out
+  // Rise in an arc: up first, then over, so the move reads as lifting out of the player's eyes.
+  const lift = Math.sin(Math.PI * e) * 1.2;
+  cam.position.lerpVectors(fl.from.pos, fl.to.pos, e); cam.position.y += lift;
+  ctl.target.lerpVectors(fl.from.tgt, fl.to.tgt, e);
+  cam.fov = fl.from.fov + (fl.to.fov - fl.from.fov) * e; cam.updateProjectionMatrix();
+  cam.lookAt(ctl.target);
+  for (const [id, x] of scene.people) x.setOpacity(Math.min(1, (fl.opac.get(id) ?? 1) + (1 - (fl.opac.get(id) ?? 1)) * e));
+  if (k >= 1) { q.fly = null; quizCam('broadcast', { silent: true }); scene.controls.enabled = true; setPlaying(true); }
+}
+
 // Move on: the card drops away, then the next question starts.
 function nextQuiz(random = false) {
   const q = ui.quiz;
