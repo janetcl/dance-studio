@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261115a';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115a';
+import { Player } from './players.js?v=20261115f';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115f';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -18,7 +18,7 @@ function courtTexture(look) {
   const g = c.getContext('2d');
   const X = (u) => (u - U0) * S, Y = (v) => (v - V0) * S;
   const fl = FLOORS[look.floor] || FLOORS.maple;
-  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'garden' ? '#1A1B20' : look.scene === 'park' ? '#8E8C86' : look.scene === 'beach' ? '#D9BE94' : look.scene === 'gym' ? '#B98F5E' : '#2B2A28';
+  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'garden' ? '#1A1B20' : look.scene === 'park' ? '#8E8C86' : look.scene === 'pier' ? '#3A3D41' : look.scene === 'beach' ? '#D9BE94' : look.scene === 'gym' ? '#B98F5E' : '#2B2A28';
   g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = look.border;
   g.fillRect(X(-30), Y(-60), 560 * S, 560 * S);
@@ -193,6 +193,8 @@ export const VIEWS = {
   baseline: { pos: [0, 12.6, -24.5], target: [0, 0.2, 2.0] },
   // Straight down over the half court, pulled back so the basket and the half-court line both fit.
   top: { pos: [0, 27, -2.0], target: [0, 0, -2.2] },
+  // Player height from behind the arc, looking up at the rim: shows what's around the court.
+  courtside: { pos: [-3.4, 1.85, 14.5], target: [0.6, 4.4, -8], fit: false },
 };
 
 // What every shot must keep in frame: corner and wing spots on the three-point line (feet to
@@ -404,6 +406,17 @@ export class CourtScene {
     const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.6), padBase);
     base.position.set(0, 0.25, boardZ - 1.7);
     g.add(arm, pole, base);
+    this.stdStanchion = [arm, pole, base];
+    // Outdoor gooseneck: one galvanized pipe curving up and over to the back of the board, black pad at the foot.
+    const gMetal = new THREE.MeshStandardMaterial({ color: '#B9C0C6', metalness: 0.85, roughness: 0.32 });
+    const gPad = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.8 });
+    const curve = new THREE.CubicBezierCurve3(new THREE.Vector3(0, 0, boardZ - 2.0), new THREE.Vector3(0, 3.6, boardZ - 2.0), new THREE.Vector3(0, 3.55, boardZ - 0.45), new THREE.Vector3(0, 3.3, boardZ - 0.04));
+    const pipe = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.085, 12), gMetal); pipe.castShadow = true;
+    const gp = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 1.9, 20), gPad); gp.position.set(0, 0.95, boardZ - 2.0); gp.castShadow = true;
+    const gPlate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.5), gMetal); gPlate.position.set(0, 0.03, boardZ - 2.0);
+    this.goose = new THREE.Group(); this.goose.add(pipe, gp, gPlate); this.goose.visible = false;
+    g.add(this.goose);
+    this.stanchionMats.push(gMetal, gPad);
     scene.add(g);
   }
 
@@ -417,11 +430,14 @@ export class CourtScene {
     this.netMat.metalness = type === 'park' ? 0.85 : 0;
     this.netMat.roughness = type === 'park' ? 0.35 : 0.95;
     const rnd = (() => { let x = 7; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
+    const goose = type === 'pier';
+    if (this.goose) { this.goose.visible = goose; for (const m of this.stdStanchion) m.visible = !goose; }
     if (type === 'garden') { this.buildGarden(rnd); return; }
     if (type === 'beach') { this.buildBeach(rnd); return; }
     if (type === 'gym') { this.buildGym(rnd, team); return; }
     if (type === 'arena') { this.buildGarden(rnd, true); return; }
     if (type === 'studio') { this.buildStudio(); return; }
+    if (type === 'pier') { this.buildPier(rnd); return; }
     if (type !== 'park') return;
     const g = (this.surround = new THREE.Group());
     // Sky dome
@@ -502,6 +518,204 @@ export class CourtScene {
     for (let x = -70; x < 70; x += 9 + rnd() * 6) building(x, -42 - rnd() * 12, 8 + rnd() * 6, 10, 14 + rnd() * 30);
     for (let z = -36; z < 30; z += 10 + rnd() * 6) { building(-46 - rnd() * 8, z, 10, 9 + rnd() * 5, 12 + rnd() * 24); building(46 + rnd() * 8, z, 10, 9 + rnd() * 5, 12 + rnd() * 24); }
     for (let x = -50; x < 50; x += 12 + rnd() * 8) building(x, -75 - rnd() * 15, 10 + rnd() * 6, 12, 40 + rnd() * 50);
+    this.scene.add(g);
+  }
+
+
+  // Brooklyn Bridge Park, Pier 2: blacktop courts on the East River with Lower Manhattan
+  // across the water behind the basket, the Brooklyn Bridge upriver, the pier shed's steel
+  // frame and pale blue roof alongside, and tall floodlights. Built all the way round.
+  buildPier(rnd) {
+    const g = (this.surround = new THREE.Group());
+    const basic = (color) => new THREE.MeshBasicMaterial({ color, fog: true });
+    // Sky: deep summer blue overhead, hazy pale blue at the horizon.
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(520, 48, 24), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false }));
+    { const pa = sky.geometry.attributes.position, cols = [], top = new THREE.Color('#2F6FC4'), mid = new THREE.Color('#6FA3DD'), hor = new THREE.Color('#CFE0F0');
+      for (let i = 0; i < pa.count; i++) { const y = Math.max(0, pa.getY(i) / 520); const c = y < 0.25 ? hor.clone().lerp(mid, y / 0.25) : mid.clone().lerp(top, Math.min(1, (y - 0.25) / 0.6)); cols.push(c.r, c.g, c.b); }
+      sky.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); }
+    g.add(sky);
+    // Cumulus clouds: soft white puffs, flat and a touch grey underneath, all round the sky.
+    const cloudTex = (seed) => {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+      const x = c.getContext('2d');
+      let r = seed; const rn = () => ((r = (r * 16807) % 2147483647) / 2147483647);
+      const puffs = [];
+      for (let i = 0; i < 26; i++) { const px = 70 + rn() * 372, base = 190 - Math.pow(1 - Math.abs(px - 256) / 200, 1.2) * (60 + rn() * 70); puffs.push([px, base - rn() * 30, 26 + rn() * 46]); }
+      for (const [px, py, pr] of puffs) {
+        const gr = x.createRadialGradient(px, py - pr * 0.3, pr * 0.15, px, py, pr);
+        gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.6, 'rgba(246,249,252,.95)'); gr.addColorStop(1, 'rgba(225,233,242,0)');
+        x.fillStyle = gr; x.beginPath(); x.arc(px, py, pr, 0, Math.PI * 2); x.fill();
+      }
+      // Flat, slightly grey base.
+      x.globalCompositeOperation = 'source-atop';
+      const sh = x.createLinearGradient(0, 120, 0, 230); sh.addColorStop(0, 'rgba(160,175,195,0)'); sh.addColorStop(1, 'rgba(150,165,188,.55)');
+      x.fillStyle = sh; x.fillRect(0, 0, 512, 256);
+      x.globalCompositeOperation = 'destination-out';
+      x.fillStyle = 'rgba(0,0,0,1)'; x.fillRect(0, 214, 512, 42);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+    };
+    const ctex = [cloudTex(11), cloudTex(29), cloudTex(53), cloudTex(97)];
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2 + rnd() * 0.2, dist = 400 + rnd() * 60, el = 45 + rnd() * 120;
+      const w = 130 + rnd() * 150, h = w * 0.5;
+      const cl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: ctex[i % 4], transparent: true, depthWrite: false, fog: false }));
+      cl.position.set(Math.sin(a) * dist, el, -Math.cos(a) * dist); cl.lookAt(0, el * 0.6, 0); g.add(cl);
+    }
+    // The pier deck: blacktop to the water's edge, with the next courts' yellow lines.
+    const dc = document.createElement('canvas'); dc.width = 1024; dc.height = 1024;
+    const dx = dc.getContext('2d');
+    dx.fillStyle = '#3A3D41'; dx.fillRect(0, 0, 1024, 1024);
+    for (let i = 0; i < 9000; i++) { dx.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '0,0,0'},${rnd() * 0.06})`; dx.fillRect(rnd() * 1024, rnd() * 1024, 2, 2); }
+    const S = 1024 / 90; // canvas px per metre; deck spans 90 m
+    const P = (mx, mz) => [(mx + 45) * S, (mz + 45 - 23) * S]; // deck runs z −22 … 68
+    dx.strokeStyle = '#E2C04E'; dx.lineWidth = 0.06 * S;
+    // A neighbouring court to the right (x +) and one beyond the baseline to the left.
+    for (const [ox, oz, rot] of [[19, -5.6, 0], [-19, -5.6, 0], [19, 22, Math.PI], [-19, 22, Math.PI]]) {
+      dx.save(); const [px, pz] = P(ox, oz); dx.translate(px, pz); dx.rotate(rot);
+      dx.fillStyle = 'rgba(232,214,150,.85)'; dx.fillRect(-2.44 * S, -1.2 * S, 4.88 * S, 5.8 * S);
+      dx.beginPath(); dx.arc(0, 4.6 * S, 1.83 * S, 0, Math.PI * 2); dx.stroke();
+      dx.beginPath(); dx.moveTo(-6.7 * S, -1.2 * S); dx.lineTo(-6.7 * S, 1.4 * S); dx.arc(0, 0, 6.75 * S, Math.PI - 0.2, 0.2, true); dx.lineTo(6.7 * S, -1.2 * S); dx.stroke();
+      dx.strokeRect(-7.6 * S, -1.2 * S, 15.2 * S, 14.3 * S);
+      dx.restore();
+    }
+    const dt = new THREE.CanvasTexture(dc); dt.colorSpace = THREE.SRGBColorSpace; dt.anisotropy = 8;
+    const deck = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshStandardMaterial({ map: dt, roughness: 0.95 }));
+    deck.rotation.x = -Math.PI / 2; deck.position.set(0, -0.012, 23); deck.receiveShadow = true; g.add(deck);
+    // Concrete pier edge and a railing on the river sides (behind the basket and to the left).
+    const conc = new THREE.MeshStandardMaterial({ color: '#B9B6AE', roughness: 0.9 });
+    const rail = new THREE.MeshStandardMaterial({ color: '#8E969C', metalness: 0.7, roughness: 0.4 });
+    const edge = (x, z, w, d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), conc); m.position.set(x, -0.8, z); g.add(m); };
+    edge(0, -22, 90, 0.6); edge(-45, 23, 0.6, 90);
+    for (const [ax, az, bx, bz] of [[-45, -22, 45, -22], [-45, -22, -45, 68]]) {
+      const len = Math.hypot(bx - ax, bz - az), rot = Math.atan2(bx - ax, bz - az);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, len, 6), rail); top.rotation.set(Math.PI / 2, 0, 0); top.rotation.y = rot; top.position.set((ax + bx) / 2, 1.05, (az + bz) / 2);
+      top.rotation.order = 'YXZ'; top.rotation.set(Math.PI / 2, rot, 0); g.add(top);
+      for (let k = 0; k <= len; k += 2.5) { const t = k / len; const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.05, 6), rail); post.position.set(ax + (bx - ax) * t, 0.52, az + (bz - az) * t); g.add(post); }
+    }
+    // The East River: blue-grey with glints, out to the far shore.
+    const wc = document.createElement('canvas'); wc.width = wc.height = 512;
+    const wx = wc.getContext('2d'); wx.fillStyle = '#4C6C86'; wx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 2600; i++) { const b = rnd(); wx.fillStyle = b < 0.5 ? `rgba(220,235,250,${rnd() * 0.22})` : `rgba(30,50,70,${rnd() * 0.25})`; wx.fillRect(rnd() * 512, rnd() * 512, 4 + rnd() * 14, 1); }
+    const wt = new THREE.CanvasTexture(wc); wt.colorSpace = THREE.SRGBColorSpace; wt.wrapS = wt.wrapT = THREE.RepeatWrapping; wt.repeat.set(30, 30);
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ map: wt, roughness: 0.25, metalness: 0.2 }));
+    water.rotation.x = -Math.PI / 2; water.position.y = -1.4; g.add(water);
+    // Brooklyn behind the camera and to the right: trees and low brick buildings on land.
+    const land = new THREE.Mesh(new THREE.PlaneGeometry(600, 400), new THREE.MeshStandardMaterial({ color: '#6C7F52', roughness: 1 }));
+    land.rotation.x = -Math.PI / 2; land.position.set(250, -0.4, 180); g.add(land);
+    const leaf = ['#4F7A3F', '#5D8A47', '#47703A'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }));
+    for (let i = 0; i < 40; i++) { const x = 50 + rnd() * 120, z = -30 + rnd() * 140; const b = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + rnd() * 2.5, 1), leaf[i % 3]); b.position.set(x, 4 + rnd() * 2, z); g.add(b); }
+    for (let i = 0; i < 40; i++) { const x = -40 + rnd() * 100, z = 55 + rnd() * 60; const b = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + rnd() * 2.5, 1), leaf[i % 3]); b.position.set(x, 4 + rnd() * 2, z); g.add(b); }
+    // Window textures for the towers.
+    const winTex = (base, lit, cols, rows, mullion) => {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+      const x = c.getContext('2d'); x.fillStyle = base; x.fillRect(0, 0, 128, 256);
+      const cw = 128 / cols, rh = 256 / rows;
+      for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) { x.fillStyle = rnd() < 0.08 ? lit : mullion; x.fillRect(q * cw + cw * 0.18, r * rh + rh * 0.2, cw * 0.64, rh * 0.6); }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+    };
+    const glassTex = (top, bottom) => {
+      const c = document.createElement('canvas'); c.width = 64; c.height = 256;
+      const x = c.getContext('2d'); const gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, top); gr.addColorStop(1, bottom); x.fillStyle = gr; x.fillRect(0, 0, 64, 256);
+      x.strokeStyle = 'rgba(255,255,255,.12)'; for (let i = 0; i < 64; i += 8) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.stroke(); }
+      x.strokeStyle = 'rgba(0,0,0,.18)'; for (let i = 0; i < 256; i += 6) { x.beginPath(); x.moveTo(0, i); x.lineTo(64, i); x.stroke(); }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+    };
+    const mats = {
+      stone: () => new THREE.MeshStandardMaterial({ map: winTex('#C9C1B2', '#F2E7C8', 6, 24, '#5A5650'), roughness: 0.85 }),
+      white: () => new THREE.MeshStandardMaterial({ map: winTex('#E4E2DC', '#FFFFFF', 8, 28, '#7D8792'), roughness: 0.8 }),
+      dark: () => new THREE.MeshStandardMaterial({ map: winTex('#2E3338', '#8899AA', 8, 30, '#1C2024'), roughness: 0.6, metalness: 0.3 }),
+      blue: () => new THREE.MeshStandardMaterial({ map: glassTex('#8FB2D3', '#3E5F80'), roughness: 0.25, metalness: 0.55 }),
+      teal: () => new THREE.MeshStandardMaterial({ map: glassTex('#7FA7B4', '#2F4F5C'), roughness: 0.25, metalness: 0.55 }),
+      brown: () => new THREE.MeshStandardMaterial({ map: winTex('#8A6F5A', '#E8D3A8', 6, 22, '#3E342C'), roughness: 0.9 }),
+    };
+    const kinds = Object.keys(mats);
+    const sk = new THREE.Group();
+    const tower = (x, z, w, d, h, kind, opts = {}) => {
+      const m = mats[kind](); m.map.repeat.set(Math.max(1, Math.round(w / 10)), Math.max(1, Math.round(h / 22)));
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, h / 2, z); sk.add(b);
+      if (opts.steps) { let y = h, ww = w, dd = d; for (let i = 0; i < opts.steps; i++) { ww *= 0.78; dd *= 0.78; const sh = h * 0.07; const s2 = new THREE.Mesh(new THREE.BoxGeometry(ww, sh, dd), m); s2.position.set(x, y + sh / 2, z); sk.add(s2); y += sh; }
+        if (opts.spire) { const sp = new THREE.Mesh(new THREE.ConeGeometry(ww * 0.45, opts.spire, 4), m); sp.position.set(x, y + opts.spire / 2, z); sp.rotation.y = Math.PI / 4; sk.add(sp); }
+        if (opts.roof) { const rf = new THREE.Mesh(new THREE.ConeGeometry(ww * 0.62, opts.roof, 4), new THREE.MeshStandardMaterial({ color: opts.roofColor || '#3F5E58', roughness: 0.7 })); rf.position.set(x, y + opts.roof / 2, z); rf.rotation.y = Math.PI / 4; sk.add(rf); } }
+      return b;
+    };
+    // Landmarks, left to right as seen from the court (Manhattan sits behind the basket, z −).
+    const Z = -330;
+    tower(-150, Z - 10, 26, 26, 128, 'white');                         // 8 Spruce-ish light tower far left
+    { const ns = new THREE.Mesh(new THREE.CylinderGeometry(9, 12, 150, 10), mats.white()); ns.position.set(-118, 75, Z - 30); sk.add(ns); } // the rippled steel tower
+    tower(-92, Z + 20, 30, 24, 110, 'dark');                           // dark glass slab
+    tower(-60, Z - 10, 18, 18, 120, 'stone', { steps: 4, spire: 34 }); // 70 Pine: Art Deco spire
+    tower(-38, Z + 30, 34, 26, 78, 'white', { steps: 3 });             // pale stepped "wedding cake"
+    tower(-22, Z - 20, 20, 20, 116, 'dark', { steps: 3, roof: 30, roofColor: '#4D6B60' }); // 40 Wall: dark with a green pyramid
+    tower(2, Z + 15, 36, 30, 96, 'teal');                              // big teal glass box
+    // One World Trade Center: tapered square tower with chamfered corners, then the spire.
+    { const ow = new THREE.Mesh(new THREE.CylinderGeometry(9, 22, 220, 4, 1), mats.blue()); ow.rotation.y = Math.PI / 4; ow.position.set(28, 110, Z - 40); sk.add(ow);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(11, 6, 11), mats.blue()); cap.position.set(28, 223, Z - 40); sk.add(cap);
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.4, 70, 8), new THREE.MeshStandardMaterial({ color: '#D8DCE0', metalness: 0.7, roughness: 0.3 })); sp.position.set(28, 261, Z - 40); sk.add(sp); }
+    tower(52, Z + 25, 28, 24, 70, 'dark');
+    tower(80, Z, 26, 22, 104, 'blue');
+    tower(108, Z + 10, 22, 22, 140, 'stone', { steps: 2 });
+    tower(135, Z - 5, 30, 26, 88, 'teal');
+    // Fill: a dense wall of shorter towers along the waterfront, and taller ones behind.
+    for (let x = -210; x <= 210; x += 20 + rnd() * 18) { if (rnd() < 0.2) continue; tower(x, Z + 50 + rnd() * 18, 10 + rnd() * 10, 12, 20 + rnd() * 28, kinds[Math.floor(rnd() * kinds.length)]); }
+    for (let x = -220; x <= 220; x += 28 + rnd() * 26) { if (rnd() < 0.3) continue; tower(x, Z - 80 - rnd() * 50, 14 + rnd() * 12, 14, 55 + rnd() * 60, kinds[Math.floor(rnd() * kinds.length)]); }
+    // Manhattan's shoreline: a low pier strip at the water.
+    const shore = new THREE.Mesh(new THREE.BoxGeometry(520, 3, 70), conc); shore.position.set(0, -0.5, Z + 40); sk.add(shore);
+    // Scale the whole skyline down about its own front line, so it sits as a band under a big sky.
+    const ks = 0.58; sk.scale.setScalar(ks); sk.position.set(0, 0, Z * (1 - ks));
+    g.add(sk);
+    // The Brooklyn Bridge upriver to the left: two stone towers with twin Gothic arches, cables and deck.
+    { const br = new THREE.Group(), stone = new THREE.MeshStandardMaterial({ color: '#B9A98E', roughness: 0.9 });
+      const cable = new THREE.MeshStandardMaterial({ color: '#C9C2B3', roughness: 0.6 });
+      const tw = (z) => { const t = new THREE.Group();
+        for (const dx of [-7, 0, 7]) { const p = new THREE.Mesh(new THREE.BoxGeometry(4, 64, 9), stone); p.position.set(dx, 32, z); t.add(p); }
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 10), stone); cap.position.set(0, 59, z); t.add(cap); return t; };
+      const zA = -60, zB = 90, deckY = 26;
+      br.add(tw(zA), tw(zB));
+      const deckM = new THREE.Mesh(new THREE.BoxGeometry(20, 2.5, 420), new THREE.MeshStandardMaterial({ color: '#6E6A62', roughness: 0.8 })); deckM.position.set(0, deckY, 15); br.add(deckM);
+      const cablePts = (x) => { const pts = []; const ends = [[-195, deckY + 2], [zA, 62], [zB, 62], [225, deckY + 2]];
+        for (let k = 0; k < 3; k++) { const [z0, y0] = ends[k], [z1, y1] = ends[k + 1]; for (let i = 0; i <= 20; i++) { const t = i / 20, sag = k === 1 ? 26 : 14; pts.push(new THREE.Vector3(x, y0 + (y1 - y0) * t - Math.sin(t * Math.PI) * sag, z0 + (z1 - z0) * t)); } }
+        return pts; };
+      for (const x of [-8, 8]) { const c = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cablePts(x)), 120, 0.5, 6), cable); br.add(c);
+        const hang = []; for (const p of cablePts(x)) { if (p.y > deckY + 3) hang.push(p.x, p.y, p.z, p.x, deckY + 1, p.z); }
+        const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hang, 3)); br.add(new THREE.LineSegments(hg, new THREE.LineBasicMaterial({ color: '#B8B1A2' }))); }
+      br.position.set(-230, 0, -120); br.rotation.y = -0.35; g.add(br); }
+    // Pier shed alongside on the right: white steel trusses under a pale blue roof, open sides.
+    { const shed = new THREE.Group(), steel = new THREE.MeshStandardMaterial({ color: '#E9ECEE', roughness: 0.55, metalness: 0.2 });
+      const roofTop = new THREE.MeshStandardMaterial({ color: '#9CC4EA', roughness: 0.6 });
+      const L = 80, Wd = 20, H = 9;
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(Wd, 0.5, L), [steel, steel, roofTop, steel, steel, steel]); roof.position.set(0, H + 1.6, 0); roof.rotation.z = -0.05; shed.add(roof);
+      for (let z = -L / 2; z <= L / 2 + 0.01; z += 8) {
+        for (const x of [-Wd / 2 + 0.6, Wd / 2 - 0.6]) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.45, H + 1.4, 0.45), steel); c.position.set(x, (H + 1.4) / 2, z); c.castShadow = true; shed.add(c); }
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(Wd, 0.5, 0.4), steel); beam.position.set(0, H + 1.1, z); shed.add(beam);
+        for (const s of [-1, 1]) { const d = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(Wd / 2, 2.2), 0.22, 0.22), steel); d.position.set(s * Wd / 4, H - 0.1, z); d.rotation.z = s * Math.atan2(2.2, Wd / 2); shed.add(d); }
+      }
+      for (const x of [-Wd / 2 + 0.6, Wd / 2 - 0.6]) { const ch = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, L), steel); ch.position.set(x, H + 1.0, 0); shed.add(ch); }
+      shed.position.set(31, 0, 4); g.add(shed); }
+    // Floodlight poles: tall galvanized masts with angled arms and two lamp heads.
+    { const metal = new THREE.MeshStandardMaterial({ color: '#AEB5BB', metalness: 0.8, roughness: 0.35 }), lamp = new THREE.MeshStandardMaterial({ color: '#5A5F64', metalness: 0.5, roughness: 0.5 });
+      const mast = (x, z, face) => { const m = new THREE.Group();
+        const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 11, 10), metal); p.position.y = 5.5; p.castShadow = true; m.add(p);
+        for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.08), metal); arm.position.set(s * 0.7, 10.8, 0); arm.rotation.z = s * -0.3; m.add(arm);
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.5), lamp); head.position.set(s * 1.4, 11.1, 0.2); head.rotation.x = 0.5; m.add(head); }
+        m.position.set(x, 0, z); m.rotation.y = face; g.add(m); };
+      for (const [x, z] of [[-11.5, -9], [-11.5, 4], [-11.5, 16], [11.5, -9], [11.5, 16], [-30, -9], [-30, 16], [-40, -18], [-40, 30]]) mast(x, z, Math.atan2(-x, -z)); }
+    // Neighbouring hoops (goosenecks) on the next courts.
+    { const metal = new THREE.MeshStandardMaterial({ color: '#B9C0C6', metalness: 0.85, roughness: 0.32 }), padM = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.8 });
+      const board = new THREE.MeshStandardMaterial({ color: '#F4F6F8', transparent: true, opacity: 0.55, roughness: 0.1 }), rim = new THREE.MeshStandardMaterial({ color: '#D9481C', metalness: 0.4, roughness: 0.4 });
+      const hoop = (x, z, rotY) => { const h = new THREE.Group();
+        const c = new THREE.CubicBezierCurve3(new THREE.Vector3(0, 0, -2.0), new THREE.Vector3(0, 3.6, -2.0), new THREE.Vector3(0, 3.55, -0.45), new THREE.Vector3(0, 3.3, -0.04));
+        h.add(new THREE.Mesh(new THREE.TubeGeometry(c, 32, 0.085, 10), metal));
+        const pd = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 1.9, 14), padM); pd.position.set(0, 0.95, -2.0); h.add(pd);
+        const b = new THREE.Mesh(new THREE.BoxGeometry(1.83, 1.07, 0.03), board); b.position.set(0, 3.4, 0); h.add(b);
+        const r = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.02, 8, 24), rim); r.rotation.x = Math.PI / 2; r.position.set(0, 3.05, 0.38); h.add(r);
+        h.position.set(x, 0, z); h.rotation.y = rotY; g.add(h); };
+      hoop(19, -5.6 - 1.2, 0); hoop(-19, -5.6 - 1.2, 0); hoop(19, 22 + 1.2, Math.PI); hoop(-19, 22 + 1.2, Math.PI); }
+    // A few benches along the left side.
+    { const wood = new THREE.MeshStandardMaterial({ color: '#8A7A66', roughness: 0.9 }), leg = new THREE.MeshStandardMaterial({ color: '#4A4F55', metalness: 0.6, roughness: 0.4 });
+      for (const z of [-2, 6, 14]) { const b = new THREE.Group(); const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 2.2), wood); seat.position.y = 0.45; b.add(seat);
+        const back = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 2.2), wood); back.position.set(-0.24, 0.72, 0); b.add(back);
+        for (const dz of [-0.9, 0.9]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.06), leg); l.position.set(0, 0.22, dz); b.add(l); }
+        b.position.set(-12.6, 0, z); b.castShadow = true; g.add(b); } }
     this.scene.add(g);
   }
 
@@ -877,20 +1091,21 @@ export class CourtScene {
       this.scene.add(this.floor);
     }
     this.floor.material.roughness = look.floor === 'blacktop' ? 0.95 : 0.55;
+    const pier = look.scene === 'pier';
     const park = look.scene === 'park', garden = look.scene === 'garden', beach = look.scene === 'beach';
-    const bg = look.scene === 'arena' || garden ? '#0D0E12' : park ? '#BFD6EA' : beach ? '#E58A6E' : look.scene === 'gym' ? '#D6CFC2' : '#E9E3D9';
+    const bg = look.scene === 'arena' || garden ? '#0D0E12' : pier ? '#9EC2EA' : park ? '#BFD6EA' : beach ? '#E58A6E' : look.scene === 'gym' ? '#D6CFC2' : '#E9E3D9';
     this.scene.background.set(bg);
-    this.scene.fog.color.set(park ? '#C9D8E4' : beach ? '#F0A07E' : bg);
-    this.scene.fog.near = park ? 45 : garden ? 60 : beach ? 70 : 30;
-    this.scene.fog.far = park ? 170 : garden ? 140 : beach ? 260 : 60;
-    this.hemi.intensity = look.scene === 'arena' ? 0.8 : garden ? 0.7 : park ? 1.1 : beach ? 1.0 : 1.25;
-    this.hemi.color.set(park ? '#DCEBFF' : beach ? '#FFB6A6' : '#FFF8EE');
-    this.hemi.groundColor.set(park ? '#6F7A5E' : beach ? '#B08A62' : '#8C7A66');
-    this.key.intensity = look.scene === 'arena' ? 2.6 : garden ? 3.0 : park ? 2.6 : beach ? 2.5 : 2.1;
-    this.key.color.set(park ? '#FFF1DC' : beach ? '#FF9F5A' : '#FFFFFF');
+    this.scene.fog.color.set(pier ? '#C3D6EA' : park ? '#C9D8E4' : beach ? '#F0A07E' : bg);
+    this.scene.fog.near = pier ? 90 : park ? 45 : garden ? 60 : beach ? 70 : 30;
+    this.scene.fog.far = pier ? 600 : park ? 170 : garden ? 140 : beach ? 260 : 60;
+    this.hemi.intensity = look.scene === 'arena' ? 0.8 : garden ? 0.7 : pier ? 1.25 : park ? 1.1 : beach ? 1.0 : 1.25;
+    this.hemi.color.set(pier ? '#D6E6FF' : park ? '#DCEBFF' : beach ? '#FFB6A6' : '#FFF8EE');
+    this.hemi.groundColor.set(pier ? '#5E6266' : park ? '#6F7A5E' : beach ? '#B08A62' : '#8C7A66');
+    this.key.intensity = look.scene === 'arena' ? 2.6 : garden ? 3.0 : pier ? 3.0 : park ? 2.6 : beach ? 2.5 : 2.1;
+    this.key.color.set(pier ? '#FFF6E6' : park ? '#FFF1DC' : beach ? '#FF9F5A' : '#FFFFFF');
     this.renderer.toneMappingExposure = beach ? 1.12 : 1.0;
     // Beach: a low sun out over the water, behind the basket, so shadows stretch toward the camera.
-    if (beach) this.key.position.set(-6, 4.2, -17); else this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
+    if (beach) this.key.position.set(-6, 4.2, -17); else if (pier) this.key.position.set(9, 18, 7); else this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
     this.host.parentElement.classList.toggle('arena', look.scene === 'arena' || garden);
     this.setSurroundings(look.scene, look.gymTeam);
   }
@@ -942,7 +1157,7 @@ export class CourtScene {
   // corners and wings stay in shot. A view the user has dragged around is left alone on screen.
   fitView() {
     const v = VIEWS[this.view];
-    if (!v || this.povActive) return;
+    if (!v || v.fit === false || this.povActive) return;
     if (this.userMoved && !this.recordSize) return;
     if (!this.userMoved) { this.camera.position.set(...v.pos); this.controls.target.set(...v.target); }
     this.camera.updateProjectionMatrix();

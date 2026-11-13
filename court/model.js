@@ -47,7 +47,7 @@ export function courtLook(play) {
     border: c.border || (home && home.border) || paint || '#2B2A28',
     label: c.label || (home && home.city) || '',
     // No choice yet = the gym, so every view (eye level too) has something behind the court.
-    scene: ['studio', 'arena', 'park', 'garden', 'beach', 'gym'].includes(c.scene) ? c.scene : 'gym',
+    scene: ['studio', 'arena', 'park', 'garden', 'beach', 'gym', 'pier'].includes(c.scene) ? c.scene : 'gym',
     gymTeam: { paint: (home && home.paint) || (c.paint !== undefined && c.paint ? c.paint : th.paint) },
   };
 }
