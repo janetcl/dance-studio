@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114d';
-import { QUIZ } from './quiz.js?v=20261114d';
+import { CourtScene, W } from './scene.js?v=20261114f';
+import { QUIZ } from './quiz.js?v=20261114f';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114d';
+import { PRESETS } from './plays.js?v=20261114f';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114d';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114d';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114d';
+} from './model.js?v=20261114f';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114f';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114f';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -276,6 +276,7 @@ function renderInspector() {
         h += '</div>';
       }
     }
+    if (p.side === 'O' && k >= 0) h += `<div class="group"><span class="label">Quiz</span><button class="btn small" data-act="make-question">Make a quiz question as #${esc(p.num)} here</button><p class="help">The question freezes this play on beat ${k + 1}. To set up the read, place defenders by hand first (Start card → Defense).</p></div>`;
     if (p.side === 'O') h += `<div class="group"><label class="label" for="ppos">Position</label><select id="ppos" data-field="pos">${POSITIONS.map((x) => `<option${x === p.pos ? ' selected' : ''}>${x}</option>`).join('')}</select></div>`;
     h += `<div class="group"><span class="label">Look</span>
       <div class="swatches" role="group" aria-label="Skin tone">${SKINS.map((c) => `<button class="swatch" data-look="skin" data-v="${c}" style="background:${c}" aria-label="Skin tone ${c}" aria-pressed="${p.look.skin === c}"></button>`).join('')}</div>
@@ -339,8 +340,72 @@ function renderTimeline() {
   }
 }
 
+// ---------- Question maker ----------
+function openMaker() {
+  const id = ui.sel, k = ui.beat;
+  const p = playerOf(id);
+  if (!p || k < 0) return;
+  const f = $('maker-form');
+  f.reset();
+  f.elements.title.value = `${play.name}: #${p.num}`;
+  f.elements.prompt.value = `You’re #${p.num}. `;
+  f.elements.rule.value = '';
+  $('maker-who').textContent = `You’re #${p.num} · ${play.name} · beat ${k + 1}: ${play.beats[k].name}`;
+  $('qmaker').showModal();
+  f.elements.prompt.focus();
+  f.elements.prompt.setSelectionRange(f.elements.prompt.value.length, f.elements.prompt.value.length);
+}
+function saveMaker() {
+  const f = $('maker-form'), fd = new FormData(f);
+  const choices = [0, 1, 2, 3].map((k) => ({ label: String(fd.get('c' + k) || '').trim(), why: String(fd.get('w' + k) || '').trim(), correct: fd.get('correct') === String(k) })).filter((c) => c.label);
+  const prompt = String(fd.get('prompt') || '').trim();
+  const err = !prompt ? 'Write the question first.' : choices.length < 2 ? 'Add at least two choices.' : !choices.some((c) => c.correct) ? 'Mark which choice is right.' : '';
+  $('maker-err').textContent = err;
+  if (err) return;
+  const at = { start: 0.12, middle: 0.5, end: 0.92 }[fd.get('freeze')] || 0.92;
+  const data = clone(play);
+  delete data.savedAt;
+  const q = {
+    id: 'my-' + uid(), mine: true, title: String(fd.get('title') || '').trim() || play.name, you: ui.sel,
+    freeze: [ui.beat, at], prompt, choices: choices.map((c) => ({ label: c.label, why: c.why || (c.correct ? 'This is the right read.' : 'Not the best read here.'), ...(c.correct ? { correct: true } : {}) })),
+    rule: String(fd.get('rule') || '').trim() || 'Read the defense, then decide.', playData: data,
+  };
+  saveMyQuestions([...myQuestions(), q]);
+  $('qmaker').close();
+  toast(`Saved “${q.title}” to My questions`, { label: 'Try it', run: () => { enterQuiz(allQ().length - 1); } });
+}
+const b64u = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (str) => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+async function squeeze(obj) {
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  try { return 'z' + b64u(new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer())); } catch { return 'j' + b64u(raw); }
+}
+async function unsqueeze(code) {
+  const bytes = unb64u(code.slice(1));
+  const raw = code[0] === 'z' ? new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()) : bytes;
+  return JSON.parse(new TextDecoder().decode(raw));
+}
+async function shareQuestion(q) {
+  const code = await squeeze(q);
+  const url = `${location.origin}${location.pathname}?mode=quiz#qz=${code}`;
+  try { await navigator.clipboard.writeText(url); toast('Link copied. It opens straight into this question.'); } catch { prompt('Copy this link', url); }
+}
+async function openSharedQuestion(code) {
+  const q = await unsqueeze(code);
+  if (!q || !q.playData || !Array.isArray(q.choices) || !q.you) throw new Error('bad question');
+  q.playData = validate(q.playData);
+  q.mine = true;
+  const list = myQuestions();
+  if (!list.some((x) => x.id === q.id)) saveMyQuestions([...list, q]);
+  history.replaceState(null, '', location.pathname + location.search);
+  return allQ().findIndex((x) => x.id === q.id);
+}
+
 // ---------- Quiz: one decision, seen through one player's eyes ----------
-const QUIZ_KEY = 'court.quiz';
+const QUIZ_KEY = 'court.quiz', MYQ_KEY = 'court.myQuestions';
+const myQuestions = () => { try { return JSON.parse(localStorage.getItem(MYQ_KEY) || '[]'); } catch { return []; } };
+const saveMyQuestions = (list) => { try { localStorage.setItem(MYQ_KEY, JSON.stringify(list)); return true; } catch { return false; } };
+const allQ = () => [...QUIZ, ...myQuestions()];
 const quizScores = () => { try { return JSON.parse(localStorage.getItem(QUIZ_KEY) || '{}'); } catch { return {}; } };
 function enterQuiz(start = 0) {
   if (ui.mode === 'watch') exitWatch();
@@ -367,9 +432,10 @@ function exitQuiz() {
   changed({ save: false });
 }
 function startQuiz(i) {
-  i = ((i % QUIZ.length) + QUIZ.length) % QUIZ.length;
-  const sc = QUIZ[i];
-  const preset = PRESETS.find((p) => p.id === sc.play);
+  const Q = allQ();
+  i = ((i % Q.length) + Q.length) % Q.length;
+  const sc = Q[i];
+  const preset = sc.playData || PRESETS.find((p) => p.id === sc.play);
   play = validate(clone(preset));
   const look = ui.watchLook || ui.editPlay;
   if (look) { play.theme = look.theme; if (look.teams) play.teams = { ...look.teams }; else delete play.teams; play.court = clone(look.court || {}); }
@@ -501,13 +567,13 @@ function answerQuiz(k) {
 }
 const POS_GROUP = { PG: 'Guards', SG: 'Guards', SF: 'Wings', PF: 'Bigs', C: 'Bigs' };
 function quizMeta(x) {
-  const pre = PRESETS.find((p) => p.id === x.play);
+  const pre = x.playData || PRESETS.find((p) => p.id === x.play);
   const me = pre.players.find((p) => p.id === x.you) || {};
-  return { pre, num: me.num, group: x.group || POS_GROUP[me.pos] || 'Wings', level: x.level || pre.level };
+  return { pre, num: me.num, group: x.group || POS_GROUP[me.pos] || 'Wings', level: x.mine ? 'Mine' : x.level || pre.level || 'Intermediate' };
 }
 function quizFiltered() {
   const f = ui.quizFilter || { group: 'All', level: 'All' };
-  return QUIZ.map((x, i) => ({ x, i, m: quizMeta(x) })).filter(({ m }) => (f.group === 'All' || m.group === f.group) && (f.level === 'All' || m.level === f.level));
+  return allQ().map((x, i) => ({ x, i, m: quizMeta(x) })).filter(({ m }) => (f.group === 'All' || m.group === f.group) && (f.level === 'All' || m.level === f.level));
 }
 function nextQuizIndex(from, random = false) {
   const list = quizFiltered();
@@ -521,16 +587,17 @@ function nextQuizIndex(from, random = false) {
 function renderQuizList() {
   const f = ui.quizFilter || (ui.quizFilter = { group: 'All', level: 'All' });
   const chip = (k, v) => `<button data-qfilter="${k}" data-v="${v}" aria-pressed="${f[k] === v}">${v}</button>`;
-  $('quiz-filters').innerHTML = `<div class="qf">${['All', 'Guards', 'Wings', 'Bigs'].map((v) => chip('group', v)).join('')}</div><div class="qf">${['All', 'Beginner', 'Intermediate', 'Advanced'].map((v) => chip('level', v)).join('')}</div>`;
+  $('quiz-filters').innerHTML = `<div class="qf">${['All', 'Guards', 'Wings', 'Bigs'].map((v) => chip('group', v)).join('')}</div><div class="qf">${['All', 'Beginner', 'Intermediate', 'Advanced', ...(myQuestions().length ? ['Mine'] : [])].map((v) => chip('level', v)).join('')}</div>`;
   const scores = quizScores();
-  const done = QUIZ.filter((x) => x.id in scores).length, right = QUIZ.filter((x) => scores[x.id]).length;
-  $('quiz-score').textContent = done ? `${right} of ${done} right` : `${QUIZ.length} questions`;
+  const Q = allQ();
+  const done = Q.filter((x) => x.id in scores).length, right = Q.filter((x) => scores[x.id]).length;
+  $('quiz-score').textContent = done ? `${right} of ${done} right` : `${Q.length} questions`;
   const list = quizFiltered();
   if (!list.length) { $('quizlist').innerHTML = '<li class="empty" style="padding:8px 14px">No questions match. Try another filter.</li>'; return; }
   $('quizlist').innerHTML = list.map(({ x, i, m }) => {
     const pre = m.pre, num = m.num;
     const st = x.id in scores ? (scores[x.id] ? '<span class="qs ok">Right</span>' : '<span class="qs no">Missed</span>') : '';
-    return `<li><button class="pl-item${ui.quiz && ui.quiz.i === i ? ' on' : ''}" data-quiz="${i}">${thumbSVG({ ...pre, theme: play.theme, teams: play.teams, court: play.court }, x.freeze[0], { w: 76 })}<span class="t"><b>${esc(x.title || pre.name)}</b><span>You’re #${esc(num)} · ${esc(m.level)}</span>${st}</span></button></li>`;
+    return `<li><button class="pl-item${ui.quiz && ui.quiz.i === i ? ' on' : ''}" data-quiz="${i}">${thumbSVG({ ...pre, theme: play.theme, teams: play.teams, court: play.court }, x.freeze[0], { w: 76 })}<span class="t"><b>${esc(x.title || pre.name)}</b><span>You’re #${esc(num)} · ${esc(m.level)}</span>${st}</span></button>${x.mine ? `<span class="myq-acts"><button class="icon-btn" data-act="share-q" data-id="${x.id}" title="Copy a link to this question" aria-label="Share ${esc(x.title)}">${icon('share', 15)}</button><button class="icon-btn danger" data-act="del-q" data-id="${x.id}" title="Delete" aria-label="Delete ${esc(x.title)}">${icon('trash', 15)}</button></span>` : ''}</li>`;
   }).join('');
 }
 
@@ -804,6 +871,10 @@ document.addEventListener('click', async (e) => {
     case 'theme': lookChange(() => { play.theme = t.dataset.v; delete play.teams; }); closePops(); break;
     case 'colors-pop': togglePop(); break;
     case 'playbook': openPlaybook(); break;
+    case 'make-question': openMaker(); break;
+    case 'maker-save': saveMaker(); break;
+    case 'share-q': { const q = myQuestions().find((x) => x.id === t.dataset.id); if (q) shareQuestion(q); break; }
+    case 'del-q': { const list = myQuestions(); const q = list.find((x) => x.id === t.dataset.id); if (!q) break; saveMyQuestions(list.filter((x) => x.id !== q.id)); renderQuizList(); toast(`Deleted “${q.title}”`, { label: 'Undo', run: () => { saveMyQuestions([...myQuestions(), q]); renderQuizList(); } }); break; }
     case 'quiz-start': store('court.quizIntro', '1'); $('quiz-card').hidden = true; $('quiz-banner').hidden = false; setPlaying(true); break;
     case 'quiz-link': { const url = quizLink(); try { await navigator.clipboard.writeText(url); toast('Quiz link copied'); } catch { prompt('Copy this link', url); } break; }
     case 'quiz-next': startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1)); break;
@@ -843,6 +914,7 @@ document.addEventListener('change', (e) => {
   if (t.dataset.lookRange) { const id = ui.sel; mutate(() => { playerOf(id).look[t.dataset.lookRange] = Number(t.value); }); return; }
   if (t.dataset.beatField) { const k = ui.beat; const v = t.value; mutate(() => { play.beats[k][t.dataset.beatField] = v; }); }
 });
+$('maker-form').addEventListener('input', () => { $('maker-err').textContent = ''; });
 $('title').addEventListener('change', () => { const v = $('title').value.trim() || 'Untitled play'; mutate(() => { play.name = v; }); });
 $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
@@ -1116,7 +1188,9 @@ async function boot() {
   renderAll();
   setPlaying(new URLSearchParams(location.search).get('autoplay') === '1');
   const qp = new URLSearchParams(location.search);
-  if (qp.get('mode') === 'quiz') { enterQuiz(Math.max(0, (Number(qp.get('q')) || 1) - 1)); }
+  const qz = location.hash.match(/#qz=([\w-]+)/);
+  if (qz) { try { enterQuiz(await openSharedQuestion(qz[1])); } catch { toast('That question link could not be opened.'); enterQuiz(0); } }
+  else if (qp.get('mode') === 'quiz') { enterQuiz(Math.max(0, (Number(qp.get('q')) || 1) - 1)); }
   else if (qp.get('mode') === 'watch') enterWatch();
   else if (!store('court.toured') && !new URLSearchParams(location.search).has('notour')) setTimeout(startTour, 700);
   requestAnimationFrame(frame);

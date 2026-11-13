@@ -453,3 +453,20 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 .qf button { height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; }
 .qf button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
 .quiz-tools { padding: 0 14px 8px; }
+
+/* Question maker */
+.modal.maker { width: 620px; }
+.maker-who { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
+.field textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; font: inherit; }
+.maker-choice { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; align-items: center; }
+.maker-choice input:not([type=radio]) { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
+.maker-radio { position: relative; }
+.maker-radio input { position: absolute; opacity: 0; }
+.maker-radio span { display: flex; width: 30px; height: 30px; border-radius: 50%; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; background: var(--surface-3); cursor: pointer; }
+.maker-radio input:checked + span { background: #2E8B57; color: #fff; }
+.maker-radio input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.maker-err { margin: 10px 0 0; color: #B42318; font-size: 13px; min-height: 1em; }
+#quizlist li { position: relative; }
+.myq-acts { position: absolute; right: 6px; top: 6px; display: flex; gap: 2px; }
+.myq-acts .icon-btn { width: 28px; height: 28px; background: var(--surface); }
+@media (max-width: 560px) { .maker-choice { grid-template-columns: 34px minmax(0, 1fr); } .maker-choice input[name^=w] { grid-column: 2; } }
