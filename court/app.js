@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114a';
-import { QUIZ } from './quiz.js?v=20261114a';
+import { CourtScene, W } from './scene.js?v=20261114b';
+import { QUIZ } from './quiz.js?v=20261114b';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114a';
+import { PRESETS } from './plays.js?v=20261114b';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114a';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114a';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114a';
+} from './model.js?v=20261114b';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114b';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114b';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@ function pushUndo(s) { hist.undo.push(s); if (hist.undo.length > 100) hist.undo.
 // Colors and court looks also work while watching: they restyle what's on screen
 // (and the plays that follow) without saving anything.
 function lookChange(fn) {
-  if (ui.mode !== 'watch') { mutate(fn); return; }
+  if (ui.mode === 'edit') { mutate(fn); return; }
   fn(play);
   ui.watchLook = { theme: play.theme, teams: play.teams && { ...play.teams }, court: clone(play.court || {}) };
   changed({ save: false });
@@ -371,7 +371,8 @@ function startQuiz(i) {
   const sc = QUIZ[i];
   const preset = PRESETS.find((p) => p.id === sc.play);
   play = validate(clone(preset));
-  if (ui.editPlay) { play.theme = ui.editPlay.theme; if (ui.editPlay.teams) play.teams = { ...ui.editPlay.teams }; play.court = clone(ui.editPlay.court || {}); }
+  const look = ui.watchLook || ui.editPlay;
+  if (look) { play.theme = look.theme; if (look.teams) play.teams = { ...look.teams }; else delete play.teams; play.court = clone(look.court || {}); }
   const { starts } = timing(play);
   const freezeT = starts[sc.freeze[0]] + play.beats[sc.freeze[0]].dur * sc.freeze[1];
   ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null };
@@ -405,7 +406,8 @@ function quizLink() {
 function quizCam(mode, { silent = false } = {}) {
   if (!ui.quiz) return;
   ui.quiz.cam = mode;
-  if (mode === 'pov') povOn(); else { povOff(); scene.setView(mode); markView(); }
+  if (mode === 'pov') povOn(); else { povOff(); scene.setView(mode); }
+  markView();
   document.querySelectorAll('[data-qcam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.qcam === mode)));
   if (!silent) ui.snap = false;
 }
@@ -465,7 +467,7 @@ function quizTick(f, dt) {
 function showQuestion() {
   const q = ui.quiz, sc = q.scene;
   const me = play.players.find((p) => p.id === sc.you);
-  $('quiz-k').textContent = `Question ${q.i + 1} of ${QUIZ.length} · You’re #${me.num}`;
+  $('quiz-k').textContent = `${sc.title || ''}${sc.title ? ' · ' : ''}You’re #${me.num}`;
   $('quiz-q').textContent = sc.prompt;
   $('quiz-choices').innerHTML = sc.choices.map((c, k) => `<button class="quiz-choice" data-choice="${k}"><span class="quiz-letter">${'ABCD'[k]}</span>${esc(c.label)}</button>`).join('');
   $('quiz-choices').hidden = false;
@@ -487,7 +489,7 @@ function answerQuiz(k) {
   $('quiz-explain').textContent = pick.correct ? pick.why : `${pick.why} ${right.why}`;
   $('quiz-rule').textContent = sc.rule;
   $('quiz-result').hidden = false;
-  $('quiz-next').textContent = q.i === QUIZ.length - 1 ? 'Back to question 1' : 'Next question';
+  $('quiz-next').textContent = 'Next question';
   // Show the right version from above: your movement added if the play needs it, slowed down, arrows on.
   if (sc.answerMoves) { const m = play.beats[sc.freeze[0]].moves; m[sc.you] = { ...(m[sc.you] || {}), ...clone(sc.answerMoves) }; }
   ui.arrows = true;
@@ -497,15 +499,38 @@ function answerQuiz(k) {
   renderQuizList();
   setPlaying(true);
 }
+const POS_GROUP = { PG: 'Guards', SG: 'Guards', SF: 'Wings', PF: 'Bigs', C: 'Bigs' };
+function quizMeta(x) {
+  const pre = PRESETS.find((p) => p.id === x.play);
+  const me = pre.players.find((p) => p.id === x.you) || {};
+  return { pre, num: me.num, group: x.group || POS_GROUP[me.pos] || 'Wings', level: x.level || pre.level };
+}
+function quizFiltered() {
+  const f = ui.quizFilter || { group: 'All', level: 'All' };
+  return QUIZ.map((x, i) => ({ x, i, m: quizMeta(x) })).filter(({ m }) => (f.group === 'All' || m.group === f.group) && (f.level === 'All' || m.level === f.level));
+}
+function nextQuizIndex(from, random = false) {
+  const list = quizFiltered();
+  if (!list.length) return from;
+  const scores = quizScores();
+  if (random) { const pool = list.filter(({ i }) => i !== from); return (pool.length ? pool : list)[Math.floor(Math.random() * (pool.length || list.length))].i; }
+  const after = list.filter(({ i }) => i > from).concat(list.filter(({ i }) => i <= from));
+  const fresh = after.find(({ x, i }) => !(x.id in scores) && i !== from);
+  return (fresh || after[0]).i;
+}
 function renderQuizList() {
+  const f = ui.quizFilter || (ui.quizFilter = { group: 'All', level: 'All' });
+  const chip = (k, v) => `<button data-qfilter="${k}" data-v="${v}" aria-pressed="${f[k] === v}">${v}</button>`;
+  $('quiz-filters').innerHTML = `<div class="qf">${['All', 'Guards', 'Wings', 'Bigs'].map((v) => chip('group', v)).join('')}</div><div class="qf">${['All', 'Beginner', 'Intermediate', 'Advanced'].map((v) => chip('level', v)).join('')}</div>`;
   const scores = quizScores();
   const done = QUIZ.filter((x) => x.id in scores).length, right = QUIZ.filter((x) => scores[x.id]).length;
   $('quiz-score').textContent = done ? `${right} of ${done} right` : `${QUIZ.length} questions`;
-  $('quizlist').innerHTML = QUIZ.map((x, i) => {
-    const pre = PRESETS.find((p) => p.id === x.play);
-    const num = (pre.players.find((p) => p.id === x.you) || {}).num;
+  const list = quizFiltered();
+  if (!list.length) { $('quizlist').innerHTML = '<li class="empty" style="padding:8px 14px">No questions match. Try another filter.</li>'; return; }
+  $('quizlist').innerHTML = list.map(({ x, i, m }) => {
+    const pre = m.pre, num = m.num;
     const st = x.id in scores ? (scores[x.id] ? '<span class="qs ok">Right</span>' : '<span class="qs no">Missed</span>') : '';
-    return `<li><button class="pl-item${ui.quiz && ui.quiz.i === i ? ' on' : ''}" data-quiz="${i}">${thumbSVG({ ...pre, theme: play.theme, teams: play.teams, court: play.court }, x.freeze[0], { w: 76 })}<span class="t"><b>${esc(pre.name)}</b><span>You’re #${esc(num)} · ${esc(pre.level)}</span>${st}</span></button></li>`;
+    return `<li><button class="pl-item${ui.quiz && ui.quiz.i === i ? ' on' : ''}" data-quiz="${i}">${thumbSVG({ ...pre, theme: play.theme, teams: play.teams, court: play.court }, x.freeze[0], { w: 76 })}<span class="t"><b>${esc(x.title || pre.name)}</b><span>You’re #${esc(num)} · ${esc(m.level)}</span>${st}</span></button></li>`;
   }).join('');
 }
 
@@ -712,11 +737,12 @@ document.addEventListener('click', async (e) => {
   }
   if (t.dataset.sel && !a) { ui.sel = ui.sel === t.dataset.sel ? null : t.dataset.sel; renderAll(); return; }
   if (t.dataset.mode) { const m = t.dataset.mode; if (m === ui.mode) return; if (ui.mode === 'quiz') exitQuiz(); if (m === 'watch') enterWatch(); else if (m === 'quiz') enterQuiz(); else exitWatch(); return; }
+  if (t.dataset.qfilter) { ui.quizFilter = { ...(ui.quizFilter || {}), [t.dataset.qfilter]: t.dataset.v }; renderQuizList(); return; }
   if (t.dataset.qcam) { quizCam(t.dataset.qcam); return; }
   if (t.dataset.choice !== undefined) { answerQuiz(Number(t.dataset.choice)); return; }
   if (t.dataset.quiz !== undefined) { startQuiz(Number(t.dataset.quiz)); if (innerWidth <= 900) $('left').classList.remove('open'); return; }
   if (t.dataset.qi !== undefined) { showQueueItem(Number(t.dataset.qi)); if (innerWidth <= 900) $('left').classList.remove('open'); return; }
-  if (t.dataset.view) { scene.setView(t.dataset.view); markView(); return; }
+  if (t.dataset.view) { if (ui.mode === 'quiz') quizCam(t.dataset.view); else { scene.setView(t.dataset.view); markView(); } return; }
   if (t.dataset.toggle) { ui[t.dataset.toggle] = !ui[t.dataset.toggle]; renderAll(); return; }
   if (t.dataset.tl) { ui.tl = t.dataset.tl; renderTimeline(); return; }
   if (t.dataset.team) {
@@ -780,7 +806,8 @@ document.addEventListener('click', async (e) => {
     case 'playbook': openPlaybook(); break;
     case 'quiz-start': store('court.quizIntro', '1'); $('quiz-card').hidden = true; $('quiz-banner').hidden = false; setPlaying(true); break;
     case 'quiz-link': { const url = quizLink(); try { await navigator.clipboard.writeText(url); toast('Quiz link copied'); } catch { prompt('Copy this link', url); } break; }
-    case 'quiz-next': startQuiz(ui.quiz ? ui.quiz.i + 1 : 0); break;
+    case 'quiz-next': startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1)); break;
+    case 'quiz-random': startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1, true)); break;
     case 'quiz-replay': startQuiz(ui.quiz ? ui.quiz.i : 0); break;
     case 'export': openExport(); break;
     case 'export-go': startExport(); break;
@@ -861,7 +888,7 @@ $('ruler').addEventListener('pointerdown', (e) => {
   e.target.addEventListener('pointermove', move);
   e.target.addEventListener('pointerup', up);
 });
-function markView() { document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === scene.view))); }
+function markView() { const cur = ui.mode === 'quiz' && ui.quiz ? (ui.quiz.cam === 'pov' ? 'pov' : ui.quiz.cam) : scene.view; document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === cur))); }
 
 function togglePop() {
   const pop = $('colors-pop');

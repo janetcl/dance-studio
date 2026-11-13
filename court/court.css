@@ -445,3 +445,11 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 @media (max-width: 900px) { .quiz-card.answered { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 55%; } }
 .quiz-choices .btn.primary { grid-column: 1 / -1; justify-self: start; height: 40px; }
 .quiz-side .panel-head .btn i[data-icon] { width: 14px; height: 14px; }
+
+.quiz-only { display: none !important; }
+.app.quizzing .quiz-only { display: inline-flex !important; }
+.quiz-filters { display: flex; flex-direction: column; gap: 6px; padding: 0 14px 8px; }
+.qf { display: flex; gap: 4px; flex-wrap: wrap; }
+.qf button { height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; }
+.qf button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.quiz-tools { padding: 0 14px 8px; }

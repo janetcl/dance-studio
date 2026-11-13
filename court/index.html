@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261114a" />
+  <link rel="stylesheet" href="court.css?v=20261114b" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
@@ -61,6 +61,8 @@
       <div class="quiz-side">
         <div class="panel-head"><h2>Quiz <span class="count" id="quiz-score"></span></h2><button class="btn small" data-action="quiz-link" title="Copy a link that opens straight into this quiz"><i data-icon="share"></i>Copy quiz link</button></div>
         <p class="quiz-intro">Each question plays from one player’s eyes, then freezes. Pick what they should do.</p>
+        <div class="quiz-filters" id="quiz-filters"></div>
+        <div class="quiz-tools"><button class="btn small" data-action="quiz-random">⟳ Random question</button></div>
         <ol class="playlist" id="quizlist"></ol>
       </div>
     </aside>
@@ -71,7 +73,7 @@
       <div class="caption" id="caption" hidden><b id="cap-title"></b><span id="cap-text"></span></div>
       <div class="stage-toolbar">
         <div class="seg" role="group" aria-label="Camera">
-          <button data-view="broadcast">Broadcast</button>
+          <button data-view="pov" class="quiz-only">Your eyes</button><button data-view="broadcast">Broadcast</button>
           <button data-view="baseline">Baseline</button>
           <button data-view="top">Top</button>
         </div>
@@ -257,6 +259,6 @@
   </dialog>
   <div class="rec-status" id="rec-status" hidden role="status"><span class="rec-dot"></span>Recording <span id="rec-time"></span><button class="btn small" data-action="export-cancel">Cancel</button></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261114a"></script>
+  <script type="module" src="app.js?v=20261114b"></script>
 </body>
 </html>
