@@ -18,21 +18,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
-  <link rel="stylesheet" href="court.css?v=20261114u" />
+  <link rel="stylesheet" href="court.css?v=20261115a" />
   <script type="importmap">
     { "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
   <link rel="modulepreload" href="../vendor/three.module.min.js" />
-  <link rel="modulepreload" href="app.js?v=20261114u" />
-  <link rel="modulepreload" href="scene.js?v=20261114u" />
-  <link rel="modulepreload" href="model.js?v=20261114u" />
-  <link rel="modulepreload" href="players.js?v=20261114u" />
-  <link rel="modulepreload" href="../js/people.js?v=20261114u" />
+  <link rel="modulepreload" href="app.js?v=20261115a" />
+  <link rel="modulepreload" href="scene.js?v=20261115a" />
+  <link rel="modulepreload" href="model.js?v=20261115a" />
+  <link rel="modulepreload" href="players.js?v=20261115a" />
+  <link rel="modulepreload" href="../js/people.js?v=20261115a" />
   <link rel="modulepreload" href="../vendor/OrbitControls.js" />
-  <link rel="modulepreload" href="plays.js?v=20261114u" />
-  <link rel="modulepreload" href="quiz.js?v=20261114u" />
-  <link rel="modulepreload" href="recorder.js?v=20261114u" />
-  <link rel="modulepreload" href="../js/icons.js?v=20261114u" />
+  <link rel="modulepreload" href="plays.js?v=20261115a" />
+  <link rel="modulepreload" href="quiz.js?v=20261115a" />
+  <link rel="modulepreload" href="recorder.js?v=20261115a" />
+  <link rel="modulepreload" href="../js/icons.js?v=20261115a" />
 </head>
 <body>
   <div class="app" id="app">
@@ -53,6 +53,18 @@
         <button class="btn ghost" data-action="playbook"><i data-icon="folder"></i><span class="hide-sm">Playbook</span></button>
         <button class="btn ghost hide-xs" data-action="export" title="Export a video of this play"><i data-icon="download"></i><span class="hide-sm">Export</span></button>
         <button class="btn primary" data-action="share"><i data-icon="share"></i><span class="hide-sm">Share</span></button>
+        <button class="icon-btn only-phone more-btn" data-action="more" aria-label="More" aria-haspopup="menu" aria-expanded="false"><i data-icon="more"></i></button>
+      </div>
+      <div class="more-menu" id="more-menu" role="menu" hidden>
+        <button role="menuitem" class="edit-only" data-action="toggle-left"><i data-icon="sliders"></i>Beats</button>
+        <button role="menuitem" class="edit-only" data-action="toggle-right"><i data-icon="users"></i>Players and teams</button>
+        <button role="menuitem" class="edit-only" data-action="redo"><i data-icon="redo"></i>Redo</button>
+        <button role="menuitem" class="edit-only" data-action="flip"><i data-icon="mirror"></i>Flip the play</button>
+        <button role="menuitem" class="edit-only" data-action="new"><i data-icon="plus"></i>New play</button>
+        <button role="menuitem" data-action="playbook"><i data-icon="folder"></i>Playbook</button>
+        <button role="menuitem" data-action="export"><i data-icon="download"></i>Export video</button>
+        <button role="menuitem" data-action="share"><i data-icon="share"></i>Share</button>
+        <button role="menuitem" data-action="tour"><i data-icon="help"></i>How it works</button>
       </div>
     </header>
 
@@ -110,16 +122,19 @@
         <div class="un-t"><span class="un-k">Up next</span><b id="un-name"></b><span id="un-meta"></span><span class="un-bar"><span id="un-fill"></span></span></div>
         <div class="un-acts"><button class="btn small primary" data-action="upnext-now">Play now</button><button class="btn small" data-action="upnext-stay">Stay on this one</button></div>
       </div>
+      <div class="qpill" id="qpill"><button data-action="quiz-step" data-dir="-1" aria-label="Previous question">‹</button><button class="qpill-main" data-action="qhome" id="qpill-label" aria-label="All questions"></button><button data-action="quiz-random">Shuffle</button><button data-action="quiz-step" data-dir="1" aria-label="Next question">›</button></div>
       <div class="quiz-banner" id="quiz-banner" hidden></div>
       <div class="radar" aria-hidden="true"><svg viewBox="-20 -50 540 400"><rect x="-20" y="-50" width="540" height="400" rx="24" fill="#E8C99D"/><rect x="170" y="0" width="160" height="190" fill="rgba(36,86,214,.12)" stroke="#fff" stroke-width="5"/><circle cx="250" cy="190" r="60" fill="none" stroke="#fff" stroke-width="5"/><path d="M30 0V142A237.5 237.5 0 0 0 470 142V0" fill="none" stroke="#fff" stroke-width="5"/><line x1="0" y1="0" x2="500" y2="0" stroke="#fff" stroke-width="5"/><circle cx="250" cy="52.5" r="10" fill="none" stroke="#E0552E" stroke-width="5"/><path id="radar-cone" fill="rgba(224,85,46,.18)" stroke="rgba(224,85,46,.5)" stroke-width="3"/><g id="radar-dots"></g></svg><span>Map</span></div>
       <button class="btn small look-reset" id="look-reset" data-action="look-reset" hidden>Reset view</button>
       <div class="quiz-card" id="quiz-card" hidden role="dialog" aria-labelledby="quiz-q">
+        <button class="quiz-min only-phone" data-action="quiz-min" aria-label="Hide the question to see the court" aria-expanded="true"><span></span></button>
         <p class="quiz-k" id="quiz-k"></p>
         <h3 id="quiz-q"></h3>
         <div class="quiz-choices" id="quiz-choices"></div>
         <button class="quiz-skip" id="quiz-skip" data-action="quiz-skip">Not sure? Show me the answer <kbd>Space</kbd></button>
         <div class="quiz-result" id="quiz-result" hidden>
           <p class="quiz-verdict" id="quiz-verdict"></p>
+          <button class="quiz-why only-phone" data-action="quiz-why" aria-expanded="false">Why?</button>
           <p id="quiz-explain"></p>
           <p class="quiz-rule"><span>Remember</span><b id="quiz-rule"></b></p>
           <div class="quiz-acts">
@@ -135,6 +150,15 @@
         <span><svg width="24" height="10"><polyline points="0,5 4,1 8,9 12,1 16,9 20,1 23,5" fill="none" stroke="#E0552E" stroke-width="1.8"/></svg>Dribble</span>
         <span><svg width="24" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#E0552E" stroke-width="2.5" stroke-dasharray="5 4"/></svg>Pass</span>
         <span><svg width="24" height="12"><line x1="0" y1="6" x2="18" y2="6" stroke="#1D1A17" stroke-width="2"/><line x1="19" y1="0" x2="19" y2="12" stroke="#1D1A17" stroke-width="4"/></svg>Screen</span>
+      </div>
+      <div class="qhome-wrap" id="qhome" hidden>
+        <div class="qhome" role="dialog" aria-modal="true" aria-labelledby="qh-title">
+          <div class="qh-head"><p class="qh-intro">You play one spot. The play runs from that player’s eyes, then freezes at a decision: make the call.</p><button class="btn small" data-action="quiz-link" title="Copy a link that opens straight into this quiz"><i data-icon="share"></i>Copy quiz link</button><button class="icon-btn qh-close" data-action="qhome-close" aria-label="Close"><i data-icon="x"></i></button></div>
+          <div class="qh-top"><section class="qh-next" id="qh-next"></section><section class="qh-stats" id="qh-stats"></section></div>
+          <div class="qh-row"><span class="qh-label">I play</span><div class="qh-chips" id="qh-pos"></div></div>
+          <div class="qh-row"><span class="qh-label">All questions</span><div class="qh-chips" id="qh-level"></div><button class="qh-link" data-action="make-question">+ Make your own</button></div>
+          <ul class="qh-grid" id="qh-grid"></ul>
+        </div>
       </div>
     </main>
 
@@ -314,6 +338,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261114u"></script>
+  <script type="module" src="app.js?v=20261115a"></script>
 </body>
 </html>

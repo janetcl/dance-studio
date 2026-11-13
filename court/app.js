@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114u';
-import { QUIZ } from './quiz.js?v=20261114u';
+import { CourtScene, W } from './scene.js?v=20261115a';
+import { QUIZ } from './quiz.js?v=20261115a';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114u';
+import { PRESETS } from './plays.js?v=20261115a';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114u';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114u';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114u';
+} from './model.js?v=20261115a';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115a';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115a';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -459,13 +459,14 @@ const myQuestions = () => { try { return JSON.parse(localStorage.getItem(MYQ_KEY
 const saveMyQuestions = (list) => { try { localStorage.setItem(MYQ_KEY, JSON.stringify(list)); return true; } catch { return false; } };
 const allQ = () => [...QUIZ, ...myQuestions()];
 const quizScores = () => { try { return JSON.parse(localStorage.getItem(QUIZ_KEY) || '{}'); } catch { return {}; } };
-function enterQuiz(start = 0) {
+function enterQuiz(start) {
   if (ui.mode === 'watch') exitWatch();
   savePlay(play);
   ui.editPlay = clone(play);
   ui.mode = 'quiz';
   ui.saved = { loop: ui.loop, arrows: ui.arrows };
   ui.loop = false;
+  if (start === undefined) { ui.upNext = pickUpNext(); startQuiz(ui.upNext, { hold: true }); openQuizHome(); return; }
   startQuiz(start);
 }
 function exitQuiz() {
@@ -475,7 +476,7 @@ function exitQuiz() {
   ui.arrows = ui.saved ? ui.saved.arrows : true;
   ui.quiz = null;
   ui.speed = 1; $('speed').textContent = '1×';
-  $('quiz-card').hidden = true; $('quiz-banner').hidden = true;
+  $('quiz-card').hidden = true; $('quiz-banner').hidden = true; $('qhome').hidden = true;
   povOff();
   scene.setView('broadcast'); markView();
   play = validate(ui.editPlay);
@@ -483,7 +484,7 @@ function exitQuiz() {
   setPlaying(false);
   changed({ save: false });
 }
-function startQuiz(i) {
+function startQuiz(i, { hold = false } = {}) {
   const Q = allQ();
   i = ((i % Q.length) + Q.length) % Q.length;
   const sc = Q[i];
@@ -498,13 +499,94 @@ function startQuiz(i) {
   ui.sel = sc.you; ui.arrows = false; ui.T = 0; ui.snap = true; ui.endHold = 0;
   ui.speed = 1; $('speed').textContent = '1×';
   const me = play.players.find((p) => p.id === sc.you);
-  $('quiz-banner').innerHTML = `You’re <b>#${esc(me.num)}</b> · watch from their eyes · drag to look around`;
+  // The pill already says who you are; the banner is just a short hint that fades away.
+  $('quiz-banner').textContent = 'Drag to look around';
   $('quiz-banner').hidden = false;
+  clearTimeout(ui.bannerT); ui.bannerT = setTimeout(() => { $('quiz-banner').hidden = true; }, 3500);
   $('quiz-card').hidden = true;
   renderAll();
   quizCam('pov', { silent: true });
-  if (!store('court.quizIntro')) { showQuizIntro(); return; }
+  updateQPill();
+  if (hold) { $('quiz-banner').hidden = true; setPlaying(false); return; }
   setPlaying(true);
+}
+// The pill at the top of the court: where you are, and the way back to every question.
+function updateQPill() {
+  const q = ui.quiz;
+  if (!q) return;
+  const list = quizFiltered(), k = list.findIndex(({ i }) => i === q.i);
+  const me = play.players.find((p) => p.id === q.scene.you);
+  $('qpill-label').innerHTML = `<b>${k >= 0 ? k + 1 : '·'} / ${list.length}</b><span class="qp-t">${esc(q.scene.title || '')}</span><span class="qp-me">You’re #${esc(me ? me.num : '')}</span><span class="qp-caret">▾</span>`;
+}
+function stepQuiz(dir) {
+  const list = quizFiltered();
+  if (!list.length) return;
+  const k = list.findIndex(({ i }) => i === (ui.quiz ? ui.quiz.i : -1));
+  const t = list[((k < 0 ? 0 : k + dir) + list.length) % list.length];
+  closeQuizHome({ resume: false });
+  startQuiz(t.i);
+}
+// Up next: something you haven't tried, else something you missed, else anything. Random,
+// so opening the quiz doesn't always land on the same question.
+function pickUpNext() {
+  const list = quizFiltered();
+  if (!list.length) return 0;
+  const sc = quizScores(), cur = ui.quiz ? ui.quiz.i : -1;
+  const fresh = list.filter(({ x }) => !(x.id in sc)), missed = list.filter(({ x }) => sc[x.id] === false);
+  let pool = fresh.length ? fresh : missed.length ? missed : list;
+  if (pool.length > 1) pool = pool.filter(({ i }) => i !== cur);
+  return pool[Math.floor(Math.random() * pool.length)].i;
+}
+const firstSentence = (t) => { const m = String(t || '').match(/^.*?[.?!](\s|$)/); return (m ? m[0] : t).trim(); };
+function renderQuizHome() {
+  const Q = allQ(), sc = quizScores();
+  const f = ui.quizFilter || (ui.quizFilter = { group: 'All', level: 'All' });
+  const list = quizFiltered();
+  if (ui.upNext == null || !list.some(({ i }) => i === ui.upNext)) ui.upNext = pickUpNext();
+  const x = Q[ui.upNext];
+  const missed = list.filter(({ x: y }) => sc[y.id] === false);
+  if (x) {
+    const m = quizMeta(x);
+    const st = !(x.id in sc) ? 'New to you' : sc[x.id] ? 'You got this one before' : 'You missed this one';
+    $('qh-next').innerHTML = `<div class="qh-thumb">${thumbSVG({ ...m.pre, theme: play.theme, teams: play.teams, court: play.court }, x.freeze[0], { w: 190 })}</div>
+      <div class="qh-copy"><span class="qh-k">Up next · ${st}</span><h2 id="qh-title">${esc(x.title || m.pre.name)}</h2><p>You’re #${esc(m.num)} · ${esc(m.level)}. ${esc(firstSentence(x.prompt))}</p>
+      <div class="qh-acts"><button class="btn primary qh-go" id="qh-start" data-action="qh-start">Start <kbd>Space</kbd></button><button class="btn qh-btn" data-action="qh-shuffle">Surprise me</button>${missed.length ? `<button class="btn qh-btn" data-action="qh-missed">Retry missed (${missed.length})</button>` : ''}</div></div>`;
+  } else $('qh-next').innerHTML = '<p class="qh-empty">No questions match. Try another filter.</p>';
+  const done = Q.filter((y) => y.id in sc).length, right = Q.filter((y) => sc[y.id]).length;
+  $('qh-stats').innerHTML = `<span class="qh-k">Your reads</span><div class="qh-big"><b>${right}</b><span>${done ? `right of ${done} tried` : 'none tried yet'}</span></div><div class="qh-bar" aria-hidden="true">${Q.map((y) => `<i class="${y.id in sc ? (sc[y.id] ? 'ok' : 'no') : ''}"></i>`).join('')}</div><span class="qh-sub">${Q.length - done} still new · ${Q.length} questions</span>`;
+  const all = allQ().map((y) => quizMeta(y));
+  const cnt = (g) => all.filter((m) => g === 'All' || m.group === g).length;
+  const chip = (k, v, label) => `<button data-qhf="${k}" data-v="${v}" aria-pressed="${f[k] === v}">${label}</button>`;
+  $('qh-pos').innerHTML = [['All', 'Any spot'], ['Guards', 'Guard'], ['Wings', 'Wing'], ['Bigs', 'Big']].map(([v, l]) => chip('group', v, `${l} <span>${cnt(v)}</span>`)).join('');
+  $('qh-level').innerHTML = ['All', 'Beginner', 'Intermediate', 'Advanced', ...(myQuestions().length ? ['Mine'] : [])].map((v) => chip('level', v, v)).join('');
+  $('qh-grid').innerHTML = list.length ? list.map(({ x: y, i, m }) => {
+    const s = y.id in sc ? (sc[y.id] ? '<span class="qs ok">Right</span>' : '<span class="qs no">Missed</span>') : '<span class="qs">New</span>';
+    return `<li><button class="qh-tile${i === ui.upNext ? ' next' : ''}" data-qh="${i}">${thumbSVG({ ...m.pre, theme: play.theme, teams: play.teams, court: play.court }, y.freeze[0], { w: 64 })}<span class="t"><b>${esc(y.title || m.pre.name)}</b><span>You’re #${esc(m.num)} · ${esc(m.level)}</span>${s}</span></button></li>`;
+  }).join('') : '<li class="qh-empty">No questions match. Try another filter.</li>';
+}
+function openQuizHome() {
+  if (ui.mode !== 'quiz') return;
+  store('court.quizIntro', '1');
+  ui.homeResume = ui.playing;
+  setPlaying(false);
+  // Don't offer the question you just answered as up next.
+  if (ui.quiz && ui.upNext === ui.quiz.i && allQ()[ui.quiz.i] && allQ()[ui.quiz.i].id in quizScores()) ui.upNext = pickUpNext();
+  renderQuizHome();
+  const el = $('qhome');
+  el.hidden = false;
+  if (!calm()) { el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' }); el.firstElementChild.animate([{ opacity: 0, transform: 'translateY(18px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' }); }
+  const go = $('qh-start'); if (go) go.focus({ preventScroll: true });
+}
+function closeQuizHome({ resume = true } = {}) {
+  const el = $('qhome');
+  if (el.hidden) return;
+  el.hidden = true;
+  if (resume && ui.homeResume) setPlaying(true);
+  else if (resume && ui.quiz && ui.quiz.phase === 'play' && ui.T === 0) setPlaying(true);
+}
+function homeStart(i) {
+  closeQuizHome({ resume: false });
+  startQuiz(i);
 }
 function showQuizIntro() {
   $('quiz-k').textContent = 'How the quiz works';
@@ -533,6 +615,7 @@ function quizCam(mode, { silent = false } = {}) {
   if (!silent) ui.snap = false;
 }
 function povOn() {
+  scene.povActive = true;
   const c = scene.controls;
   ui.povSaved = ui.povSaved || { min: c.minDistance, maxPolar: c.maxPolarAngle };
   c.enabled = false; c.enableDamping = false; c.minDistance = 0.05; c.maxPolarAngle = Math.PI;
@@ -544,6 +627,7 @@ function povOn() {
   scene.camera.updateProjectionMatrix();
 }
 function povOff() {
+  scene.povActive = false;
   const c = scene.controls;
   if (ui.povSaved) { c.minDistance = ui.povSaved.min; c.maxPolarAngle = ui.povSaved.maxPolar; ui.povSaved = null; }
   c.enabled = true; c.enableDamping = true;
@@ -623,7 +707,8 @@ function showQuestion() {
   $('quiz-choices').hidden = false;
   $('quiz-result').hidden = true;
   $('quiz-skip').hidden = false;
-  $('quiz-card').classList.remove('answered');
+  $('quiz-card').classList.remove('answered', 'min', 'why');
+  document.querySelector('.quiz-why').textContent = 'Why?';
   $('quiz-card').hidden = false;
   $('quiz-banner').hidden = true;
 }
@@ -661,6 +746,7 @@ function answerQuiz(k) {
     $('quiz-explain').textContent = pick.correct ? right.why : `${pick.why} ${right.why}`;
     $('quiz-rule').textContent = sc.rule;
     $('quiz-result').hidden = false;
+    card.classList.remove('min', 'why'); document.querySelector('.quiz-why').textContent = 'Why?';
     card.classList.add('answered');
     if (slow) card.animate([{ opacity: 0, translate: '0 16px' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
     // Show the right version from above: your movement added if the play needs it, slowed down, arrows on.
@@ -914,6 +1000,7 @@ function frame(nowMs) {
 
 // ---------- Events ----------
 document.addEventListener('click', async (e) => {
+  if (!$('more-menu').hidden && !e.target.closest('[data-action="more"]')) { $('more-menu').hidden = true; document.querySelector('.more-btn').setAttribute('aria-expanded', 'false'); }
   const t = e.target.closest('button, [data-beat]');
   if (!t) return;
   const a = t.dataset.action || t.dataset.act;
@@ -927,6 +1014,9 @@ document.addEventListener('click', async (e) => {
   }
   if (t.dataset.sel && !a) { ui.sel = ui.sel === t.dataset.sel ? null : t.dataset.sel; renderAll(); return; }
   if (t.dataset.mode) { const m = t.dataset.mode; if (m === ui.mode) return; if (ui.mode === 'quiz') exitQuiz(); if (m === 'watch') enterWatch(); else if (m === 'quiz') enterQuiz(); else exitWatch(); return; }
+  if (t.dataset.qh !== undefined) { homeStart(Number(t.dataset.qh)); return; }
+  if (t.dataset.qhf) { ui.quizFilter = { ...(ui.quizFilter || {}), [t.dataset.qhf]: t.dataset.v }; ui.upNext = null; renderQuizHome(); renderQuizList(); updateQPill(); return; }
+  if (t.classList && t.classList.contains('qhome-wrap')) { closeQuizHome(); return; }
   if (t.dataset.qfilter) { ui.quizFilter = { ...(ui.quizFilter || {}), [t.dataset.qfilter]: t.dataset.v }; renderQuizList(); return; }
   if (t.dataset.qcam) { quizCam(t.dataset.qcam); return; }
   if (t.dataset.choice !== undefined) { answerQuiz(Number(t.dataset.choice)); return; }
@@ -1003,7 +1093,16 @@ document.addEventListener('click', async (e) => {
     case 'quiz-start': store('court.quizIntro', '1'); $('quiz-card').hidden = true; $('quiz-banner').hidden = false; setPlaying(true); break;
     case 'quiz-link': { const url = quizLink(); try { await navigator.clipboard.writeText(url); toast('Quiz link copied'); } catch { prompt('Copy this link', url); } break; }
     case 'quiz-next': nextQuiz(); break;
-    case 'quiz-random': nextQuiz(true); break;
+    case 'quiz-step': stepQuiz(Number(t.dataset.dir)); break;
+    case 'more': { const m = $('more-menu'); m.hidden = !m.hidden; t.setAttribute('aria-expanded', String(!m.hidden)); break; }
+    case 'quiz-min': { const c = $('quiz-card'); const min = c.classList.toggle('min'); t.setAttribute('aria-expanded', String(!min)); t.setAttribute('aria-label', min ? 'Show the question' : 'Hide the question to see the court'); break; }
+    case 'quiz-why': { const c = $('quiz-card'); const on = c.classList.toggle('why'); t.textContent = on ? 'Hide why' : 'Why?'; t.setAttribute('aria-expanded', String(on)); break; }
+    case 'qhome': openQuizHome(); break;
+    case 'qhome-close': closeQuizHome(); break;
+    case 'qh-start': homeStart(ui.upNext); break;
+    case 'qh-shuffle': homeStart(nextQuizIndex(ui.upNext, true)); break;
+    case 'qh-missed': { const sc = quizScores(); const m = quizFiltered().filter(({ x }) => sc[x.id] === false); if (m.length) homeStart(m[Math.floor(Math.random() * m.length)].i); break; }
+    case 'quiz-random': closeQuizHome({ resume: false }); nextQuiz(true); break;
     case 'quiz-replay': startQuiz(ui.quiz ? ui.quiz.i : 0); break;
     case 'export': openExport(); break;
     case 'export-go': startExport(); break;
@@ -1039,6 +1138,7 @@ document.addEventListener('change', (e) => {
   if (t.dataset.lookRange) { const id = ui.sel; mutate(() => { playerOf(id).look[t.dataset.lookRange] = Number(t.value); }); return; }
   if (t.dataset.beatField) { const k = ui.beat; const v = t.value; mutate(() => { play.beats[k][t.dataset.beatField] = v; }); }
 });
+$('qhome').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeQuizHome(); });
 $('maker-form').addEventListener('input', () => { $('maker-err').textContent = ''; });
 $('title').addEventListener('change', () => { const v = $('title').value.trim() || 'Untitled play'; mutate(() => { play.name = v; }); });
 $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
@@ -1055,6 +1155,11 @@ addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (typing) return;
+  if (!$('qhome').hidden) {
+    if (e.key === 'Escape') { e.preventDefault(); closeQuizHome(); }
+    else if (e.key === ' ' && tag !== 'BUTTON') { e.preventDefault(); homeStart(ui.upNext); }
+    return;
+  }
   if (ui.mode === 'quiz' && ui.quiz && ui.quiz.phase === 'freeze' && !typing) {
     // At the question: Space = not sure, show me; 1–4 or A–D picks an answer.
     if (e.key === ' ') { e.preventDefault(); answerQuiz(-1); return; }

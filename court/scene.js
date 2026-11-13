@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261114u';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114u';
+import { Player } from './players.js?v=20261115a';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115a';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -195,6 +195,46 @@ export const VIEWS = {
   top: { pos: [0, 27, -2.0], target: [0, 0, -2.2] },
 };
 
+// What every shot must keep in frame: corner and wing spots on the three-point line (feet to
+// head), the top of the key, and the backboard. Used to pull the camera back on narrow frames.
+const FIT_PTS = (() => {
+  const pts = [];
+  for (const [u, v] of [[8, 10], [492, 10], [8, 150], [492, 150], [40, 250], [460, 250], [120, 320], [380, 320], [250, 330]]) { pts.push(W(u, v, 0), W(u, v, 1.95)); }
+  pts.push(W(220, 40, 3.95), W(280, 40, 3.95));
+  return pts;
+})();
+// Safe area per frame shape, in clip space: leaves room for the title, badge and captions
+// that the recorder draws over the video.
+export function fitBox(aspect, recording) {
+  if (!recording) return { x: 0.94, top: 0.9, bottom: -0.92 };
+  if (aspect < 0.8) return { x: 0.95, top: 0.5, bottom: -0.42 };
+  if (aspect < 1.3) return { x: 0.95, top: 0.8, bottom: -0.62 };
+  return { x: 0.94, top: 0.84, bottom: -0.72 };
+}
+const _fv = new THREE.Vector3();
+// Keep the camera's angle and target, and back it off (never in) until the fit points are inside the box.
+export function fitCamera(camera, target, box) {
+  const dir = camera.position.clone().sub(target);
+  const d0 = dir.length();
+  if (d0 < 1e-6) return;
+  dir.divideScalar(d0);
+  const fits = (d) => {
+    camera.position.copy(target).addScaledVector(dir, d);
+    camera.lookAt(target);
+    camera.updateMatrixWorld();
+    for (const p of FIT_PTS) {
+      _fv.copy(p).project(camera);
+      if (_fv.z > 1 || _fv.z < -1 || Math.abs(_fv.x) > box.x || _fv.y > box.top || _fv.y < box.bottom) return false;
+    }
+    return true;
+  };
+  if (fits(d0)) return;
+  let lo = d0, hi = d0 * 1.5;
+  while (!fits(hi) && hi < d0 * 6) { lo = hi; hi *= 1.5; }
+  for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; if (fits(m)) hi = m; else lo = m; }
+  fits(hi);
+}
+
 export class CourtScene {
   constructor(host, labels, hooks = {}) {
     this.host = host;
@@ -215,6 +255,7 @@ export class CourtScene {
     scene.fog = new THREE.Fog('#E9E3D9', 30, 60);
     this.camera = new THREE.PerspectiveCamera(36, 1, 0.1, 700);
     const c = (this.controls = new OrbitControls(this.camera, r.domElement));
+    c.addEventListener('start', () => { this.userMoved = true; });
     c.enableDamping = true;
     c.maxPolarAngle = Math.PI * 0.47;
     c.minDistance = 5;
@@ -892,8 +933,20 @@ export class CourtScene {
     this.ghostStanchion(name === 'baseline');
     this.camera.position.set(...v.pos);
     this.controls.target.set(...v.target);
-    this.controls.update();
     this.view = name;
+    this.userMoved = false;
+    this.fitView();
+    this.controls.update();
+  }
+  // Preset views back off on narrow frames (a phone held upright, a square or 9:16 video) so the
+  // corners and wings stay in shot. A view the user has dragged around is left alone on screen.
+  fitView() {
+    const v = VIEWS[this.view];
+    if (!v || this.povActive) return;
+    if (this.userMoved && !this.recordSize) return;
+    if (!this.userMoved) { this.camera.position.set(...v.pos); this.controls.target.set(...v.target); }
+    this.camera.updateProjectionMatrix();
+    fitCamera(this.camera, this.controls.target, fitBox(this.camera.aspect, !!this.recordSize));
   }
 
   // While exporting, render at the video's exact size instead of the on-screen size.
@@ -904,11 +957,13 @@ export class CourtScene {
       this.renderer.setSize(size.w, size.h, false);
       const a = size.w / size.h, hfov = 2 * Math.atan(Math.tan((18 * Math.PI) / 180) * (a >= 1.6 ? 1.6 : 1.25));
       this.camera.aspect = a;
-      this.camera.fov = a >= 1.6 ? 36 : Math.min(80, (2 * Math.atan(Math.tan(hfov / 2) / a) * 180) / Math.PI);
+      this.camera.fov = a >= 1.6 ? 36 : Math.min(72, (2 * Math.atan(Math.tan(hfov / 2) / a) * 180) / Math.PI);
       this.camera.updateProjectionMatrix();
+      this.fitView();
     } else {
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       this.resize();
+      this.fitView();
     }
   }
 
@@ -919,8 +974,9 @@ export class CourtScene {
     this.renderer.setSize(w, h, false);
     const a = w / h, hfov = 2 * Math.atan(Math.tan((18 * Math.PI) / 180) * (a >= 1.6 ? 1.6 : 1.2));
     this.camera.aspect = a;
-    this.camera.fov = a >= 1.6 ? 36 : Math.min(82, (2 * Math.atan(Math.tan(hfov / 2) / a) * 180) / Math.PI);
+    this.camera.fov = a >= 1.6 ? 36 : Math.min(72, (2 * Math.atan(Math.tan(hfov / 2) / a) * 180) / Math.PI);
     this.camera.updateProjectionMatrix();
+    this.fitView();
   }
 
   setMarks(marks, selected) {

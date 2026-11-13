@@ -2,6 +2,7 @@
 // onto a 1280×720 canvas with the number tags and beat captions drawn on top, and
 // MediaRecorder turns that canvas into an MP4 (or WebM where MP4 isn't supported).
 import * as THREE from 'three';
+import { fitCamera, fitBox } from './scene.js?v=20261115a';
 
 // Overlays are laid out on a 1280×720 grid and scaled to the chosen size.
 const W = 1280, H = 720;
@@ -303,5 +304,10 @@ export function cinematicCamera(camera, target, t, aspect = 16 / 9) {
   const tz = -0.2 - k * 1.5;
   target.set(0, k * 0.7, tz);
   camera.position.set(Math.sin(az) * radius, height, tz + Math.cos(az) * radius);
+  camera.lookAt(target);
+  // As the swoop lands, ease into a framing that never cuts off the three-point line.
+  const designed = camera.position.clone();
+  fitCamera(camera, target, fitBox(aspect, true));
+  camera.position.lerpVectors(designed, camera.position, k);
   camera.lookAt(target);
 }

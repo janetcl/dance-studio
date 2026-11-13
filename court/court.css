@@ -515,3 +515,142 @@ body.ready .stage-loading { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .quiz-choice, .quiz-choice.right, .quiz-choice.wrong, .quiz-result > * { animation: none; } }
 /* Keep Next in reach when the explanation is long. */
 .quiz-card.answered .quiz-acts { position: sticky; bottom: -16px; margin: 0 -18px -16px; padding: 10px 18px 14px; background: var(--surface); border-top: 1px solid var(--line); }
+
+/* ---------- Quiz home: lands over the court when you open the quiz ---------- */
+.qpill { display: none; position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 4; align-items: center; gap: 2px; padding: 4px; background: rgba(29,26,23,.9); color: #fff; border-radius: 999px; box-shadow: 0 8px 22px rgba(0,0,0,.22); max-width: calc(100% - 24px); }
+.app.quizzing .qpill { display: flex; }
+.qpill button { height: 34px; min-width: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: inherit; font-size: 13px; white-space: nowrap; }
+.qpill button:hover { background: rgba(255,255,255,.12); }
+.qpill .qpill-main { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,.12); min-width: 0; overflow: hidden; }
+.qpill .qpill-main b { font-variant-numeric: tabular-nums; }
+.qpill .qp-t { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.qpill .qp-me { color: #FFB37A; }
+.qpill .qp-caret { opacity: .7; font-size: 11px; }
+.app.quizzing .quiz-banner { top: 104px; }
+
+.qhome-wrap { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(29,26,23,.38); }
+.qhome-wrap[hidden] { display: none; }
+.qhome { width: min(920px, 100%); max-height: 100%; overflow: auto; overscroll-behavior: contain; background: var(--bg); border-radius: 20px; box-shadow: 0 30px 80px rgba(29,26,23,.4); padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 14px; }
+.qh-head { display: flex; align-items: center; gap: 12px; }
+.qh-intro { margin: 0; flex: 1; color: var(--ink-2); font-size: 13px; }
+.qh-close { flex: none; }
+.qh-top { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 14px; }
+.qh-next, .qh-stats { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); }
+.qh-next { display: flex; gap: 18px; padding: 16px; align-items: center; }
+.qh-thumb { flex: none; width: 190px; border-radius: 12px; overflow: hidden; line-height: 0; }
+.qh-thumb svg { width: 100%; height: auto; }
+.qh-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.qh-k { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
+.qh-copy h2 { margin: 0; font: 400 38px/1 var(--serif); }
+.qh-copy p { margin: 0; color: var(--ink-2); font-size: 14px; }
+.qh-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.qh-acts .btn { height: 42px; padding: 0 16px; font-size: 14px; border-radius: 10px; }
+.qh-go kbd { font: 600 10px var(--font); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+.qh-stats { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.qh-big { display: flex; align-items: baseline; gap: 8px; }
+.qh-big b { font-size: 40px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+.qh-big span, .qh-sub { color: var(--ink-2); font-size: 13px; }
+.qh-bar { display: flex; gap: 3px; }
+.qh-bar i { flex: 1; height: 9px; border-radius: 3px; background: var(--line-strong); }
+.qh-bar i.ok { background: #2E8B57; }
+.qh-bar i.no { background: #C0392B; }
+.qh-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.qh-label { font-weight: 600; font-size: 14px; margin-right: 4px; }
+.qh-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.qh-chips button { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
+.qh-chips button span { color: var(--ink-3); margin-left: 2px; }
+.qh-chips button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.qh-chips button[aria-pressed="true"] span { color: rgba(255,255,255,.6); }
+.qh-link { margin-left: auto; border: 0; background: none; color: var(--accent-ink); font-size: 13px; font-weight: 500; padding: 6px 4px; }
+.qh-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.qh-tile { width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); transition: border-color .15s ease, transform .15s ease; }
+.qh-tile:hover { border-color: var(--ink); }
+.qh-tile:active { transform: scale(.98); }
+.qh-tile.next { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.qh-tile svg { flex: none; border-radius: 6px; }
+.qh-tile .t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.qh-tile b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qh-tile .t > span:not(.qs) { font-size: 12px; color: var(--ink-2); }
+.qh-tile .qs { align-self: flex-start; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); }
+.qh-empty { color: var(--ink-2); padding: 8px 4px; }
+@media (max-width: 760px) {
+  .qhome-wrap { padding: 0; align-items: flex-end; }
+  .qhome { border-radius: 18px 18px 0 0; max-height: 92%; padding: 14px 14px 20px; }
+  .qh-top { grid-template-columns: minmax(0, 1fr); }
+  .qh-next { flex-direction: column; align-items: stretch; }
+  .qh-thumb { width: 100%; max-height: 150px; }
+  .qh-thumb svg { height: 150px; width: 100%; }
+  .qh-copy h2 { font-size: 32px; }
+  .qh-acts .btn { flex: 1 1 auto; justify-content: center; height: 46px; }
+  .qh-go kbd { display: none; }
+  .qh-grid { grid-template-columns: minmax(0, 1fr); }
+  .qh-link { margin-left: 0; }
+  .qpill .qp-me { display: none; }
+}
+/* The quiz home and the pill replace the side list: the court gets the full width. */
+.app.quizzing { grid-template-columns: minmax(0, 1fr) !important; }
+.app.quizzing .panel.left { display: none !important; }
+@media (max-width: 900px) {
+  .qhome-wrap { position: fixed; z-index: 60; }
+  .app.quizzing .radar { top: auto; bottom: 10px; width: 120px; }
+  .app.quizzing .quiz-banner { top: 100px; font-size: 12px; padding: 6px 12px; }
+}
+.app.quizzing [data-action="toggle-left"] { display: none !important; }
+
+/* ---------- Phones: give the court the room ---------- */
+@media (max-width: 600px) {
+  .tl-head { flex-wrap: nowrap; gap: 6px; }
+  .tl-head .now { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  .tl-head .now b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shot small { display: none; }
+  .shot { padding: 5px 8px; }
+  #speed { padding: 0 6px; }
+  .timeline { padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); }
+  /* Quiz and watch don't need the beat blocks on a phone; prev/next beat stay in the bar. */
+  .app.quizzing .tl-body, .app.watching .tl-body { display: none; }
+  .app.quizzing .toggles { display: none !important; }
+  .app.quizzing .qpill { top: 54px; }
+  .pb-head { flex-wrap: wrap; gap: 10px; padding: 14px 14px 12px 16px; }
+  .pb-head-actions { flex-wrap: wrap; }
+}
+@media (hover: none) and (pointer: coarse) { kbd, .quiz-skip kbd, .qh-go kbd, #quiz-next kbd { display: none !important; } }
+
+/* ---------- Phones: slim top bar with a More menu; compact quiz sheet ---------- */
+.only-phone { display: none !important; }
+.more-menu { position: absolute; top: 52px; right: 8px; z-index: 70; min-width: 210px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 48px rgba(29,26,23,.22); padding: 6px; display: flex; flex-direction: column; }
+.more-menu[hidden] { display: none; }
+.more-menu button { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border: 0; background: none; border-radius: 9px; font-size: 15px; text-align: left; }
+.more-menu button:hover, .more-menu button:active { background: var(--surface-2); }
+.more-menu i[data-icon] { width: 18px; height: 18px; color: var(--ink-2); }
+.topbar { position: relative; }
+@media (max-width: 600px) {
+  .only-phone { display: inline-flex !important; }
+  .topbar-right > :not(.more-btn):not([data-action="undo"]) { display: none !important; }
+  .app.quizzing .topbar-right [data-action="undo"], .app.watching .topbar-right [data-action="undo"] { display: none !important; }
+  .title-input { flex: 1 1 auto; max-width: none; font-size: 19px; padding: 4px 6px; }
+  .app.quizzing .title-input { visibility: hidden; }
+  .mode-seg button { padding: 3px 9px; }
+
+  /* Question: smaller type, answers in a 2 × 2 grid, and a handle to tuck it away. */
+  .quiz-card { left: 6px; right: 6px; bottom: 6px; width: auto; transform: none; padding: 8px 12px 10px; gap: 7px; border-radius: 14px; max-height: 52%; }
+  .quiz-min { align-self: center; width: 64px; height: 20px; margin: -2px 0 -4px; border: 0; background: none; padding: 0; justify-content: center; align-items: center; }
+  .quiz-min span { display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--line-strong); }
+  .quiz-k { font-size: 10px; margin: 0; }
+  .quiz-card h3 { font-size: 14px; line-height: 1.32; }
+  .quiz-choices, .app .quiz-choices { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px; }
+  .quiz-choice { min-height: 46px; padding: 6px 8px; gap: 7px; font-size: 12.5px; line-height: 1.25; border-radius: 9px; }
+  .quiz-letter { flex: none; width: 20px; height: 20px; font-size: 11px; }
+  .quiz-skip { font-size: 12px; }
+  .quiz-card.min { gap: 0; padding-bottom: 8px; }
+  .quiz-card.min > :not(.quiz-min):not(.quiz-k) { display: none !important; }
+  .quiz-card.min .quiz-k::after { content: ' · tap to answer'; color: var(--ink-3); }
+  /* Answer: verdict, the rule and the buttons; the full reason behind "Why?". */
+  .quiz-card.answered { left: 6px; right: 6px; bottom: 6px; max-height: 44%; }
+  .quiz-card.answered .quiz-choices, .quiz-card.answered h3 { display: none !important; }
+  .quiz-card.answered:not(.why) #quiz-explain { display: none; }
+  .quiz-why { align-self: flex-start; border: 0; background: none; padding: 2px 0; color: var(--accent-ink); font-weight: 600; font-size: 13px; }
+  .quiz-result { gap: 6px; }
+  .quiz-verdict { font-size: 15px; }
+  .quiz-card.answered .quiz-acts { bottom: -10px; margin: 0 -12px -10px; padding: 8px 12px 10px; }
+}
+@media (max-width: 600px) { .app.quizzing .radar { bottom: 64px; } }
