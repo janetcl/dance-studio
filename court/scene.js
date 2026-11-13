@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { Player } from './players.js';
-import { THEMES, RIM as RIM_UV } from './model.js';
+import { THEMES, FLOORS, RIM as RIM_UV } from './model.js';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -11,30 +11,43 @@ const toUV = (p) => [p.x / F + 250, p.z / F + 235];
 const RIM_Y = 3.05;
 const RIM = W(RIM_UV[0], RIM_UV[1], RIM_Y);
 
-function courtTexture(paint) {
+function courtTexture(look) {
   const S = 3, U0 = -70, V0 = -110, UW = 640, VH = 640;
   const c = document.createElement('canvas');
   c.width = UW * S; c.height = VH * S;
   const g = c.getContext('2d');
   const X = (u) => (u - U0) * S, Y = (v) => (v - V0) * S;
-  g.fillStyle = '#2B2A28';
+  const fl = FLOORS[look.floor] || FLOORS.maple;
+  g.fillStyle = look.scene === 'arena' ? '#121316' : '#2B2A28';
   g.fillRect(0, 0, c.width, c.height);
-  g.fillStyle = paint;
+  g.fillStyle = look.border;
   g.fillRect(X(-30), Y(-60), 560 * S, 560 * S);
-  const plank = 7.5;
-  for (let u = 0, i = 0; u < 500; u += plank, i++) {
-    for (let v = -2, j = 0; v < 470; j++) {
-      const len = 60 + ((i * 37 + j * 53) % 90);
-      g.fillStyle = `hsl(${33 + ((i * 13 + j * 7) % 5)} 52% ${72 + ((i * 29 + j * 11) % 9) * 0.9}%)`;
-      g.fillRect(X(u), Y(Math.max(0, v)), plank * S - 1, Math.min(len, 470 - Math.max(0, v)) * S - 1);
-      v += len;
+  if (fl.solid) {
+    g.fillStyle = fl.solid;
+    g.fillRect(X(0), Y(0), 500 * S, 470 * S);
+    for (let i = 0; i < 26000; i++) {
+      g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${Math.random() * 0.08})`;
+      g.fillRect(X(Math.random() * 500), Y(Math.random() * 470), 2, 2);
+    }
+  } else {
+    const plank = 7.5;
+    for (let u = 0, i = 0; u < 500; u += plank, i++) {
+      for (let v = -2, j = 0; v < 470; j++) {
+        const len = 60 + ((i * 37 + j * 53) % 90);
+        g.fillStyle = `hsl(${fl.h + ((i * 13 + j * 7) % 5)} ${fl.s}% ${fl.l + ((i * 29 + j * 11) % 9) * 0.9}%)`;
+        g.fillRect(X(u), Y(Math.max(0, v)), plank * S - 1, Math.min(len, 470 - Math.max(0, v)) * S - 1);
+        v += len;
+      }
     }
   }
-  g.fillStyle = paint;
-  g.globalAlpha = 0.85;
-  g.fillRect(X(170), Y(0), 160 * S, 190 * S);
-  g.globalAlpha = 1;
-  g.strokeStyle = '#FFFFFF';
+  if (look.paint) {
+    g.fillStyle = look.paint;
+    g.globalAlpha = 0.85;
+    g.fillRect(X(170), Y(0), 160 * S, 190 * S);
+    g.beginPath(); g.arc(X(250), Y(470), 60 * S, Math.PI, 2 * Math.PI); g.fill();
+    g.globalAlpha = 1;
+  }
+  g.strokeStyle = look.lines;
   g.lineWidth = 2 * S;
   const line = (f) => { g.beginPath(); f(); g.stroke(); };
   line(() => g.rect(X(0), Y(0), 500 * S, 470 * S));
@@ -48,6 +61,24 @@ function courtTexture(paint) {
   line(() => g.arc(X(250), Y(52.5), 40 * S, 0, Math.PI));
   line(() => g.arc(X(250), Y(470), 60 * S, Math.PI, 2 * Math.PI));
   for (const v of [70, 110, 140, 170]) for (const [u0, u1] of [[160, 170], [330, 340]]) line(() => { g.moveTo(X(u0), Y(v)); g.lineTo(X(u1), Y(v)); });
+  if (look.label) {
+    // Baseline wordmark, painted on the apron behind the basket, readable from the broadcast camera.
+    g.save();
+    g.fillStyle = look.lines;
+    g.globalAlpha = 0.92;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let size = 34 * S;
+    g.font = `800 ${size}px Geist, "Arial Black", Impact, sans-serif`;
+    const text = look.label.toUpperCase().slice(0, 28);
+    while (g.measureText(text).width > 480 * S && size > 10) { size -= 2; g.font = `800 ${size}px Geist, "Arial Black", Impact, sans-serif`; }
+    g.translate(X(250), Y(-30));
+    g.scale(1, -1);
+    g.rotate(Math.PI);
+    g.scale(-1, 1);
+    g.fillText(text, 0, 0);
+    g.restore();
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
@@ -158,8 +189,9 @@ export class CourtScene {
     c.minDistance = 5;
     c.maxDistance = 40;
 
-    scene.add(new THREE.HemisphereLight('#FFF8EE', '#8C7A66', 1.25));
-    const key = new THREE.DirectionalLight('#FFFFFF', 2.1);
+    this.hemi = new THREE.HemisphereLight('#FFF8EE', '#8C7A66', 1.25);
+    scene.add(this.hemi);
+    const key = (this.key = new THREE.DirectionalLight('#FFFFFF', 2.1));
     key.position.set(6, 16, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -192,6 +224,7 @@ export class CourtScene {
     this.addGeo = new THREE.TorusGeometry(0.1, 0.03, 8, 20);
 
     this.setTheme('rb');
+    this.setCourt({ floor: 'maple', paint: THEMES.rb.paint, lines: '#FFFFFF', border: THEMES.rb.paint, label: '', scene: 'studio' });
     this.setView('broadcast');
     this.bindPointer();
     new ResizeObserver(() => this.resize()).observe(host);
@@ -226,7 +259,14 @@ export class CourtScene {
   setTheme(name) {
     this.theme = THEMES[name] ? name : 'rb';
     const t = THEMES[this.theme];
-    const { tex, w, h, cx, cz } = courtTexture(t.paint);
+    for (const p of this.people.values()) p.setKit({ ...t[p.side] });
+  }
+
+  setCourt(look) {
+    const key = JSON.stringify(look);
+    if (key === this.courtKey) return;
+    this.courtKey = key;
+    const { tex, w, h, cx, cz } = courtTexture(look);
     if (this.floor) { this.floor.material.map.dispose(); this.floor.material.map = tex; this.floor.material.needsUpdate = true; } else {
       this.floor = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
       this.floor.rotation.x = -Math.PI / 2;
@@ -234,7 +274,13 @@ export class CourtScene {
       this.floor.receiveShadow = true;
       this.scene.add(this.floor);
     }
-    for (const p of this.people.values()) p.setKit({ ...t[p.side] });
+    this.floor.material.roughness = look.floor === 'blacktop' ? 0.95 : 0.55;
+    const bg = look.scene === 'arena' ? '#16171B' : '#E9E3D9';
+    this.scene.background.set(bg);
+    this.scene.fog.color.set(bg);
+    this.hemi.intensity = look.scene === 'arena' ? 0.8 : 1.25;
+    this.key.intensity = look.scene === 'arena' ? 2.6 : 2.1;
+    this.host.parentElement.classList.toggle('arena', look.scene === 'arena');
   }
 
   // Rebuild players when the roster or a look changes.

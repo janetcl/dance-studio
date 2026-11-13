@@ -19,15 +19,16 @@
     <header class="topbar">
       <a class="brand" href="../" title="Dance Studio"><img src="../assets/icon.svg" alt="" width="26" height="26" /><span class="hide-sm">Dance Studio</span></a>
       <nav class="modes hide-xs" aria-label="Mode"><a href="../">Dance</a><a href="./" aria-current="page">Court</a></nav>
+      <div class="seg mode-seg" role="group" aria-label="Edit or watch"><button data-mode="edit">Edit</button><button data-mode="watch">Watch</button></div>
       <input id="title" class="title-input" spellcheck="false" aria-label="Play name" />
       <span id="saved" class="saved">Saved</span>
       <div class="topbar-right">
         <button class="icon-btn only-narrow" data-action="toggle-left" title="Beats"><i data-icon="sliders"></i></button>
-        <button class="icon-btn only-narrow" data-action="toggle-right" title="Players"><i data-icon="users"></i></button>
-        <button class="icon-btn" data-action="undo" title="Undo (⌘Z)"><i data-icon="undo"></i></button>
-        <button class="icon-btn" data-action="redo" title="Redo (⇧⌘Z)"><i data-icon="redo"></i></button>
-        <button class="btn ghost hide-xs" data-action="flip" title="Mirror the play left ↔ right"><i data-icon="mirror"></i><span class="hide-sm">Flip</span></button>
-        <button class="btn ghost hide-xs" data-action="new" title="New play"><i data-icon="plus"></i><span class="hide-sm">New</span></button>
+        <button class="icon-btn only-narrow edit-only" data-action="toggle-right" title="Players"><i data-icon="users"></i></button>
+        <button class="icon-btn edit-only" data-action="undo" title="Undo (⌘Z)"><i data-icon="undo"></i></button>
+        <button class="icon-btn edit-only" data-action="redo" title="Redo (⇧⌘Z)"><i data-icon="redo"></i></button>
+        <button class="btn ghost hide-xs edit-only" data-action="flip" title="Mirror the play left ↔ right"><i data-icon="mirror"></i><span class="hide-sm">Flip</span></button>
+        <button class="btn ghost hide-xs edit-only" data-action="new" title="New play"><i data-icon="plus"></i><span class="hide-sm">New</span></button>
         <button class="btn ghost" data-action="playbook"><i data-icon="folder"></i><span class="hide-sm">Playbook</span></button>
         <button class="btn primary" data-action="share"><i data-icon="share"></i><span class="hide-sm">Share</span></button>
       </div>
@@ -39,6 +40,13 @@
         <button class="btn small" data-action="add-beat" title="New beat after this one (B)"><i data-icon="plus"></i>New</button>
       </div>
       <ol class="cards" id="cards"></ol>
+      <div class="watch-side">
+        <div class="panel-head">
+          <h2>Playbook <span class="count" id="pl-count"></span></h2>
+          <button class="switch-row" data-action="autoplay" role="switch" id="autoplay" aria-checked="true"><span>Autoplay</span><span class="switch"><span></span></span></button>
+        </div>
+        <ol class="playlist" id="playlist"></ol>
+      </div>
     </aside>
 
     <main class="stage-wrap" id="stage-wrap">
@@ -59,9 +67,19 @@
             <button class="chip" data-action="colors-pop" id="colors-btn">Colors</button>
             <div class="pop" id="colors-pop" hidden></div>
           </div>
+          <div class="pop-wrap">
+            <button class="chip" data-action="court-pop">Court</button>
+            <div class="pop court" id="court-pop" hidden></div>
+          </div>
         </div>
       </div>
       <div class="stage-hint" id="hint"></div>
+      <div class="upnext" id="upnext" hidden role="status">
+        <div class="un-thumb" id="un-thumb"></div>
+        <div class="un-t"><span class="un-k">Up next</span><b id="un-name"></b><span id="un-meta"></span><span class="un-bar"><span id="un-fill"></span></span></div>
+        <div class="un-acts"><button class="btn small primary" data-action="upnext-now">Play now</button><button class="btn small" data-action="upnext-stay">Stay on this one</button></div>
+      </div>
+      <button class="btn edit-this" data-action="edit-this"><i data-icon="route"></i>Edit this play</button>
       <div class="legend" aria-hidden="true">
         <span><svg width="24" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#E0552E" stroke-width="2.5"/></svg>Cut</span>
         <span><svg width="24" height="10"><polyline points="0,5 4,1 8,9 12,1 16,9 20,1 23,5" fill="none" stroke="#E0552E" stroke-width="1.8"/></svg>Dribble</span>
@@ -83,11 +101,11 @@
         <button class="play" data-action="play" id="play-btn" title="Play / pause (Space)"><i data-icon="play"></i></button>
         <button class="icon-btn" data-action="prev" title="Previous beat ([)"><i data-icon="skip-back"></i></button>
         <button class="icon-btn" data-action="next" title="Next beat (])"><i data-icon="skip-fwd"></i></button>
-        <div class="now"><b id="beat-now">Start</b><span><span id="time-now">0:00.0</span> / <span id="time-total">0:00</span></span></div>
+        <div class="now"><b id="beat-now">Start</b><span class="play-of" id="play-of"></span><span><span id="time-now">0:00.0</span> / <span id="time-total">0:00</span></span></div>
         <div class="shot" title="Shot clock"><small>SHOT CLOCK</small><span id="clock">24.0</span></div>
         <button class="btn small ghost" data-action="speed" id="speed">1×</button>
         <div class="tl-spacer"></div>
-        <div class="seg small" role="group" aria-label="Timeline view">
+        <div class="seg small edit-only" role="group" aria-label="Timeline view">
           <button data-tl="beats">Beats</button>
           <button data-tl="lanes">Lanes</button>
         </div>
@@ -101,13 +119,19 @@
     </section>
   </div>
 
-  <dialog class="modal wide" id="playbook">
-    <div class="modal-head"><h2>Playbook</h2><button class="icon-btn" data-close aria-label="Close"><i data-icon="x"></i></button></div>
-    <p class="modal-sub">Common half-court sets, each broken into beats. Load one, then make it yours. <button class="btn small" data-action="new">Start a blank play</button></p>
-    <div class="filters" id="pb-filters"></div>
-    <div class="pb-grid" id="pb-grid"></div>
-    <h3 class="pb-mine-h">My plays</h3>
-    <div class="pb-grid" id="pb-mine"></div>
+  <dialog class="modal wide pb" id="playbook" aria-labelledby="pb-h">
+    <div class="pb-head">
+      <div><h2 id="pb-h">Playbook</h2></div>
+      <div class="pb-head-actions"><button class="btn" data-action="watch-all"><i data-icon="play"></i>Watch them all</button><button class="btn" data-action="new"><i data-icon="plus"></i>Blank play</button><button class="icon-btn" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+    </div>
+    <div class="pb-main">
+      <nav class="pb-nav" id="pb-nav" aria-label="Play types"></nav>
+      <section class="pb-content">
+        <h3 id="pb-title"></h3>
+        <p id="pb-desc" class="pb-desc"></p>
+        <div id="pb-body"></div>
+      </section>
+    </div>
   </dialog>
 
   <dialog class="modal small" id="newplay">
@@ -124,7 +148,7 @@
         </div>
       </div>
       <label class="field"><span>Defense</span>
-        <select name="defense"><option value="man">Man to man (follows automatically)</option><option value="hand">Placed by hand</option><option value="none">No defense</option></select>
+        <select name="defense"><option value="man">Man to man (follows automatically)</option><option value="zone">2-3 zone (moves automatically)</option><option value="hand">Placed by hand</option><option value="none">No defense</option></select>
       </label>
       <label class="field"><span>Colors</span><select name="theme" id="np-theme"></select></label>
       <div class="modal-actions">

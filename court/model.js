@@ -21,6 +21,32 @@ export const THEMES = {
   nysa: { name: 'NY vs SA jerseys', O: { jersey: '#F7F7F5', shorts: '#F7F7F5', num: '#006BB6', trim: '#F58426' }, D: { jersey: '#1A1A1A', shorts: '#1A1A1A', num: '#C4CED4', trim: '#1A1A1A' }, paint: '#0A5FA8' },
 };
 
+// Court looks. A play's court = { floor, paint, lines, border, label, scene };
+// paint/border null means "use the team colors".
+export const FLOORS = {
+  maple: { name: 'Maple', h: 33, s: 52, l: 72, thumb: '#E8C99D' },
+  honey: { name: 'Honey', h: 30, s: 58, l: 57, thumb: '#D39A5E' },
+  walnut: { name: 'Walnut', h: 22, s: 38, l: 33, thumb: '#7A5236' },
+  gray: { name: 'Gray wood', h: 30, s: 6, l: 70, thumb: '#BDB8B1' },
+  blacktop: { name: 'Blacktop', solid: '#3B3E42', thumb: '#45484C' },
+};
+export const PAINTS = ['#2D4E9C', '#B3202E', '#0F6B5E', '#5B3A9E', '#1D1A17', '#E07A1F', '#3F7D3A', '#8E8A84'];
+export const LINE_COLORS = { '#FFFFFF': 'White', '#1D1A17': 'Black', '#F2B705': 'Gold', '#E0552E': 'Orange' };
+export const BORDERS = ['#2B2A28', '#1D1A17', '#5A544C', '#B3202E', '#0F6B5E', '#F2B705'];
+export function courtLook(play) {
+  const c = play.court || {};
+  const th = THEMES[play.theme] || THEMES.rb;
+  const paint = c.paint === undefined || c.paint === null ? th.paint : c.paint;
+  return {
+    floor: FLOORS[c.floor] ? c.floor : 'maple',
+    paint, // '' = no paint
+    lines: c.lines || (c.floor === 'blacktop' ? '#FFFFFF' : '#FFFFFF'),
+    border: c.border || paint || '#2B2A28',
+    label: c.label || '',
+    scene: c.scene === 'arena' ? 'arena' : 'studio',
+  };
+}
+
 export const SKINS = ['#F1C9A5', '#E0AC80', '#C68B5E', '#8D5A3B', '#5B3A29'];
 export const HAIRS = ['#1D1A17', '#2B1D14', '#6B3E1F', '#C9A15A', '#A8452A', '#B9B4AC'];
 export const STYLES = { short: 'Short', buzz: 'Buzz', curly: 'Curly', bun: 'Bun', pony: 'Ponytail', long: 'Long' };
@@ -57,6 +83,44 @@ export function manSpot(man, ball) {
   const k = Math.min(34, d * 0.45) / d;
   const u = man[0] + dx * k, v = man[1] + dy * k;
   return ball ? [u + (ball[0] - u) * 0.08, v + (ball[1] - v) * 0.08] : [u, v];
+}
+
+// Zone shapes. Spots are listed by priority, so smaller teams use the first few.
+export const ZONES = {
+  '2-3': { name: '2-3 zone', spots: [[250, 85], [185, 245], [315, 245], [110, 100], [390, 100]] },
+  '3-2': { name: '3-2 zone', spots: [[250, 290], [110, 205], [390, 205], [185, 95], [315, 95]] },
+  '1-3-1': { name: '1-3-1 zone', spots: [[250, 300], [250, 165], [110, 195], [390, 195], [250, 70]] },
+};
+
+// Zone defense: everyone slides with the ball, the closest defender steps out on it,
+// and the rest pick up anyone cutting into their area.
+export function zoneSpots(type, n, offense, ball) {
+  const homes = (ZONES[type] || ZONES['2-3']).spots.slice(0, n);
+  const B = ball || [250, 300];
+  const shifted = homes.map(([u, v]) => [
+    u + Math.max(-70, Math.min(70, (B[0] - 250) * 0.38)),
+    v + Math.max(-40, Math.min(40, (B[1] - 220) * 0.18)),
+  ]);
+  const out = shifted.map((q) => q.slice());
+  if (ball) {
+    let best = 0, bd = Infinity;
+    shifted.forEach((q, k) => { const d = Math.hypot(q[0] - B[0], q[1] - B[1]); if (d < bd) { bd = d; best = k; } });
+    out[best] = manSpot(B);
+    shifted.forEach((q, k) => {
+      if (k === best) return;
+      let near = null, nd = 75;
+      for (const o of offense) {
+        if (o === B) continue;
+        const d = Math.hypot(o[0] - q[0], o[1] - q[1]);
+        if (d < nd) { nd = d; near = o; }
+      }
+      if (near) {
+        const g = manSpot(near);
+        out[k] = [q[0] + (g[0] - q[0]) * 0.55, q[1] + (g[1] - q[1]) * 0.55];
+      }
+    });
+  }
+  return out;
 }
 
 export function makePlayers(size) {
@@ -192,21 +256,29 @@ export function sample(play, T) {
   const ev = play.beats[i] && play.beats[i].ball;
   const ballOwner = ev && ev.kind === 'pass' && t >= ev.t1 ? ev.to : holder;
   const ballPos = ballOwner ? pos[ballOwner] : RIM;
+  if (play.defense === 'zone') {
+    const spots = zoneSpots(play.zone, def.length, off.map((p) => pos[p.id]).filter(Boolean), ballOwner ? pos[ballOwner] : null);
+    def.forEach((d, k) => { pos[d.id] = spots[k]; });
+  }
   if (play.defense === 'man') {
     const screeners = off.filter((p) => moveOf(play, i, p.id).act === 'screen').map((p) => pos[p.id]);
     for (const d of def) {
       if (!pos[d.guard]) continue;
       let spot;
       const gm = movers[d.guard] && moveOf(play, i, d.guard);
-      if (gm && d.guard !== holder) {
-        // Chase a cutter: trail a step behind along their path.
+      const goal = manSpot(pos[d.guard], ballPos);
+      if (gm && d.guard !== holder && screeners.length) {
+        // A cutter running off screens: the defender chases a step behind, gets caught
+        // on the screens, then recovers to the goal side by the end of the beat.
         const f = PACES[gm.pace] ? PACES[gm.pace].f : easeInOut;
         const path = smooth(gm.pts);
         const lag = 32 / Math.max(32, path.total);
-        const back = Math.max(0, f(t) - lag);
-        spot = pointAlong(path, back);
-        if (f(t) < lag) spot = lerp2(manSpot(gm.from, ballPos), spot, f(t) / lag);
-      } else spot = manSpot(pos[d.guard], ballPos);
+        const fv = f(t);
+        let trail = pointAlong(path, Math.max(0, fv - lag));
+        if (fv < lag) trail = lerp2(manSpot(gm.from, ballPos), trail, fv / lag);
+        const k = Math.max(0, Math.min(1, (fv - 0.6) / 0.4));
+        spot = lerp2(trail, goal, k * k * (3 - 2 * k));
+      } else spot = goal; // Goal side: between their player and the basket.
       // Defenders can't run through screeners: they get pushed around them.
       for (const s of screeners) {
         const dx = spot[0] - s[0], dy = spot[1] - s[1], dist = Math.hypot(dx, dy);
@@ -283,7 +355,9 @@ export function validate(p) {
   p.id = p.id || uid();
   p.size = p.size || p.players.filter((x) => x.side === 'O').length;
   p.theme = THEMES[p.theme] ? p.theme : 'rb';
-  p.defense = ['man', 'hand', 'none'].includes(p.defense) ? p.defense : 'man';
+  p.defense = ['man', 'zone', 'hand', 'none'].includes(p.defense) ? p.defense : 'man';
+  p.zone = ZONES[p.zone] ? p.zone : '2-3';
+  p.court = p.court && typeof p.court === 'object' ? p.court : {};
   p.start = p.start || {};
   for (const pl of p.players) {
     pl.look = { ...(LOOKS[pl.side][(Number(pl.num) - 1) % 5] || LOOKS.O[0]), ...(pl.look || {}) };
@@ -329,11 +403,17 @@ export async function decodeShare(s) {
 // ---------- Top-down thumbnail ----------
 export function thumbSVG(play, i, { w = 120, marks = true } = {}) {
   const th = THEMES[play.theme] || THEMES.rb;
+  const cl = courtLook(play);
   const h = Math.round(w * 0.86);
   const ends = {};
   for (const p of play.players) ends[p.id] = i < 0 ? play.start[p.id] : posAt(play, p.id, i);
   const holder = i < 0 ? play.ball : holderAt(play, i + 1);
   if (play.defense === 'man') for (const d of play.players.filter((x) => x.side === 'D')) ends[d.id] = manSpot(ends[d.guard], holder && ends[holder]);
+  if (play.defense === 'zone') {
+    const ds = play.players.filter((x) => x.side === 'D');
+    const zs = zoneSpots(play.zone, ds.length, play.players.filter((x) => x.side === 'O').map((x) => ends[x.id]), holder && ends[holder]);
+    ds.forEach((d, k) => { ends[d.id] = zs[k]; });
+  }
   const pathD = (pts) => pts.map((q, k) => (k ? 'L' : 'M') + q[0].toFixed(0) + ' ' + q[1].toFixed(0)).join('');
   let arrows = '';
   if (marks && i >= 0) {
@@ -351,10 +431,10 @@ export function thumbSVG(play, i, { w = 120, marks = true } = {}) {
       (p.side === 'O' ? `<text x="${u}" y="${v + 7}" text-anchor="middle" font-family="Geist,sans-serif" font-weight="700" font-size="20" fill="${k.num}">${p.num}</text>` : '');
   }).join('');
   return `<svg viewBox="-10 -40 520 390" width="${w}" height="${h}" aria-hidden="true">` +
-    `<rect x="-10" y="-40" width="520" height="390" fill="#E8C99D"/><rect x="-10" y="-40" width="520" height="40" fill="#D9B47F"/>` +
-    `<rect x="170" y="0" width="160" height="190" fill="${th.paint}" fill-opacity=".28" stroke="#fff" stroke-width="4"/>` +
-    `<circle cx="250" cy="190" r="60" fill="none" stroke="#fff" stroke-width="4"/>` +
-    `<path d="M30 0V142A237.5 237.5 0 0 0 470 142V0" fill="none" stroke="#fff" stroke-width="4"/>` +
+    `<rect x="-10" y="-40" width="520" height="390" fill="${FLOORS[cl.floor].thumb}"/><rect x="-10" y="-40" width="520" height="40" fill="${cl.border}" fill-opacity=".55"/>` +
+    `<rect x="170" y="0" width="160" height="190" fill="${cl.paint || 'none'}" fill-opacity=".45" stroke="${cl.lines}" stroke-width="4"/>` +
+    `<circle cx="250" cy="190" r="60" fill="none" stroke="${cl.lines}" stroke-width="4"/>` +
+    `<path d="M30 0V142A237.5 237.5 0 0 0 470 142V0" fill="none" stroke="${cl.lines}" stroke-width="4"/>` +
     `<circle cx="250" cy="52.5" r="9" fill="none" stroke="#E0552E" stroke-width="5"/>` +
     arrows + dots + `</svg>`;
 }

@@ -3,7 +3,7 @@
 import { CourtScene } from './scene.js';
 import { PRESETS } from './plays.js';
 import {
-  THEMES, SKINS, HAIRS, STYLES, POSITIONS, PACES, uid, clampUV, newPlay, validate, flipPlay,
+  THEMES, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
 } from './model.js';
@@ -16,20 +16,21 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 let play;
 const ui = {
   beat: -1, T: 0, playing: false, speed: 1, sel: null, endHold: 0, loop: true,
-  arrows: true, defense: true, tags: true, tl: 'beats', filter: 'All', snap: true,
+  arrows: true, defense: true, tags: true, tl: 'beats', filter: 'Easy', snap: true,
+  mode: 'edit', autoplay: true, queue: [], qi: 0, editPlay: null, upNext: 0,
 };
 const hist = { undo: [], redo: [] };
 
 // ---------- History and saving ----------
 function snapshot() { return JSON.stringify(play); }
 function pushUndo(s) { hist.undo.push(s); if (hist.undo.length > 100) hist.undo.shift(); hist.redo = []; }
-function mutate(fn) { pushUndo(snapshot()); fn(play); changed(); }
+function mutate(fn) { if (ui.mode === 'watch') return; pushUndo(snapshot()); fn(play); changed(); }
 let saveTimer;
-function changed({ save = true } = {}) {
+function changed({ save = ui.mode === 'edit' } = {}) {
   ui.beat = Math.min(ui.beat, play.beats.length - 1);
   if (ui.sel && !play.players.some((p) => p.id === ui.sel)) ui.sel = null;
   renderAll();
-  if (save) {
+  if (save && ui.mode === 'edit') {
     $('saved').textContent = 'Saving…';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { $('saved').textContent = savePlay(play) ? 'Saved' : 'Not saved'; }, 350);
@@ -74,7 +75,7 @@ function setPlaying(on) {
 
 // ---------- Scene ----------
 const scene = new CourtScene($('stage'), $('labels'), {
-  onPick(id) { ui.sel = id; if (ui.playing) setPlaying(false); renderSide(); },
+  onPick(id) { if (ui.mode === 'watch') return; ui.sel = id; if (ui.playing) setPlaying(false); renderSide(); },
   onDragStart(d) {
     if (ui.playing) setPlaying(false);
     if (ui.T !== endOf(ui.beat)) { ui.T = endOf(ui.beat); }
@@ -98,7 +99,7 @@ const scene = new CourtScene($('stage'), $('labels'), {
   onDragEnd(d) {
     if (d.moved && d.before && d.before !== snapshot()) { pushUndo(d.before); tidy(); changed(); }
     else if (d.kind === 'player' && !d.moved) renderSide();
-    if (d.blocked && d.moved) toast(play.defense === 'man' ? 'Defenders follow their player. Switch Defense to “Placed by hand” on the Start card to drag them.' : 'This player is hidden.');
+    if (d.blocked && d.moved) toast(play.defense === 'man' ? 'Defenders follow their player. Switch Defense to “Placed by hand” on the Start card to drag them.' : play.defense === 'zone' ? 'Zone defenders move on their own. Switch Defense to “Placed by hand” on the Start card to drag them.' : 'This player is hidden.');
   },
   onHandleDouble(h) {
     if (h.kind !== 'wp') return;
@@ -108,6 +109,7 @@ const scene = new CourtScene($('stage'), $('labels'), {
 });
 
 function canDrag(id) {
+  if (ui.mode === 'watch') return false;
   const p = play.players.find((x) => x.id === id);
   return p && (p.side === 'O' || play.defense === 'hand');
 }
@@ -136,6 +138,8 @@ function tidy() {
 // ---------- Rendering ----------
 const playerOf = (id) => play.players.find((p) => p.id === id);
 const nameOf = (id) => { const p = playerOf(id); return p ? (p.side === 'O' ? p.num : 'X' + p.num) : '?'; };
+const SPEEDS = [['quick', 'Quick', 1.0], ['normal', 'Normal', 1.6], ['slow', 'Slow', 2.3]];
+const speedOf = (d) => (d <= 1.2 ? 'quick' : d <= 1.95 ? 'normal' : 'slow');
 const ACT_LABEL = { hold: 'Hold', cut: 'Cut', dribble: 'Dribble', screen: 'Screen' };
 
 function beatSummary(k) {
@@ -157,7 +161,7 @@ function renderCards() {
   const items = [`<li><button class="card${ui.beat === -1 && !ui.playing ? ' on' : ''}" data-beat="-1">${thumbSVG(play, -1, { w: 84, marks: false })}<span class="meta"><span class="k">START</span><span class="n">Starting spots</span><span class="s">${play.size} v ${play.size} · ${esc(THEMES[play.theme].name)}</span></span></button></li>`];
   const cur = ui.playing ? beatAt(play, ui.T).i : -2;
   play.beats.forEach((b, k) => {
-    items.push(`<li><button class="card${ui.beat === k && !ui.playing ? ' on' : ''}${cur === k ? ' playing' : ''}" data-beat="${k}">${thumbSVG(play, k, { w: 84 })}<span class="meta"><span class="k">BEAT ${k + 1} · ${b.dur}s</span><span class="n">${esc(b.name || 'Beat ' + (k + 1))}</span><span class="s">${esc(beatSummary(k))}</span></span></button></li>`);
+    items.push(`<li><button class="card${ui.beat === k && !ui.playing ? ' on' : ''}${cur === k ? ' playing' : ''}" data-beat="${k}">${thumbSVG(play, k, { w: 84 })}<span class="meta"><span class="k">BEAT ${k + 1}</span><span class="n">${esc(b.name || 'Beat ' + (k + 1))}</span><span class="s">${esc(beatSummary(k))}</span></span></button></li>`);
   });
   list.innerHTML = items.join('');
 }
@@ -168,12 +172,26 @@ function renderRoster() {
   $('roster').innerHTML = play.players.filter((p) => p.side === 'O' || play.defense !== 'none').map((p) => {
     const k = t[p.side];
     const light = k.jersey.toUpperCase() > '#E0E0E0';
-    return `<button class="pchip ${p.side}${ui.sel === p.id ? ' on' : ''}${light ? ' light' : ''}" data-sel="${p.id}" style="background:${k.jersey};color:${k.num}" aria-pressed="${ui.sel === p.id}"><b>${p.side === 'O' ? esc(p.num) : 'X' + esc(p.num)}</b><span>${p.side === 'O' ? esc(p.pos) : 'on ' + esc(nameOf(p.guard))}</span></button>`;
+    return `<button class="pchip ${p.side}${ui.sel === p.id ? ' on' : ''}${light ? ' light' : ''}" data-sel="${p.id}" style="background:${k.jersey};color:${k.num}" aria-pressed="${ui.sel === p.id}"><b>${p.side === 'O' ? esc(p.num) : 'X' + esc(p.num)}</b><span>${p.side === 'O' ? esc(p.pos) : play.defense === 'zone' ? 'zone' : play.defense === 'hand' ? 'D' : 'on ' + esc(nameOf(p.guard))}</span></button>`;
   }).join('');
 }
 
 function opt(label, attrs, on, disabled) {
   return `<button class="opt" ${attrs} aria-pressed="${!!on}"${disabled ? ' disabled' : ''}>${label}</button>`;
+}
+
+function courtControls() {
+  const c = play.court || {};
+  const L = courtLook(play);
+  const sw = (attr, v, color, label, on) => `<button class="swatch" ${attr} data-v="${v}" style="background:${color}" aria-label="${esc(label)}" aria-pressed="${on}"></button>`;
+  return `<div class="court-ctl">
+    <span class="sub">Floor</span><div class="opts">${Object.entries(FLOORS).map(([k, f]) => opt(`<span class="sw" style="background:${f.thumb}"></span> ${f.name}`, `data-court="floor" data-v="${k}"`, L.floor === k)).join('')}</div>
+    <span class="sub">Paint</span><div class="swatches">${opt('Team', 'data-court="paint" data-v="__team"', c.paint === undefined || c.paint === null)}${PAINTS.map((x) => sw('data-court="paint"', x, x, 'Paint ' + x, c.paint === x)).join('')}${opt('None', 'data-court="paint" data-v=""', c.paint === '')}</div>
+    <span class="sub">Lines</span><div class="swatches">${Object.entries(LINE_COLORS).map(([x, n]) => sw('data-court="lines"', x, x, n + ' lines', L.lines === x)).join('')}</div>
+    <span class="sub">Border</span><div class="swatches">${opt('Match paint', 'data-court="border" data-v=""', !c.border)}${BORDERS.map((x) => sw('data-court="border"', x, x, 'Border ' + x, c.border === x)).join('')}</div>
+    <label class="sub" for="court-label">Baseline text</label><input id="court-label" type="text" maxlength="28" placeholder="e.g. Tigers" value="${esc(c.label || '')}" data-court-label />
+    <span class="sub">Around the court</span><div class="opts">${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}</div>
+  </div>`;
 }
 
 function renderInspector() {
@@ -186,7 +204,9 @@ function renderInspector() {
     const kit = t[p.side];
     h += `<div class="who"><span class="dot" style="background:${kit.jersey};color:${kit.num}">${p.side === 'O' ? esc(p.num) : 'X' + esc(p.num)}</span><div><h3>${p.side === 'O' ? 'Offense ' + esc(p.num) + ' · ' + esc(p.pos) : 'Defense X' + esc(p.num)}</h3><div class="sub">${k < 0 ? 'Starting spot' : `Beat ${k + 1}: ${esc(play.beats[k].name)}`}</div></div></div>`;
     const draggable = canDrag(p.id);
-    if (p.side === 'D' && play.defense === 'man') {
+    if (p.side === 'D' && play.defense === 'zone') {
+      h += `<p class="note">X${esc(p.num)} plays the ${esc(ZONES[play.zone].name)}. Zone defenders slide with the ball, the closest one steps out on it, and the others pick up anyone cutting into their area. Change the zone on the Start card.</p>`;
+    } else if (p.side === 'D' && play.defense === 'man') {
       h += `<div class="group"><label class="label" for="guard">Guards</label><select id="guard" data-field="guard">${play.players.filter((x) => x.side === 'O').map((o) => `<option value="${o.id}"${o.id === p.guard ? ' selected' : ''}>${esc(o.num)} · ${esc(o.pos)}</option>`).join('')}</select><p class="help">Defenders follow their player automatically, chase cutters and get caught on screens. To drag them yourself, set Defense to “Placed by hand” on the Start card.</p></div>`;
     } else if (k < 0) {
       h += `<p class="note">Drag ${esc(nameOf(p.id))} on the court to set where they start.</p>`;
@@ -218,15 +238,18 @@ function renderInspector() {
       <div class="row"><label for="hgt" class="grow">Height</label><input id="hgt" type="range" min="0.9" max="1.14" step="0.01" value="${p.look.height || 1}" data-look-range="height" /></div></div>`;
   } else if (k < 0) {
     h += `<div><h3>Start</h3><p class="help" style="font-size:12px;color:var(--ink-2);margin:4px 0 0">Where everyone lines up before the first beat. Drag players to move them.</p></div>`;
-    h += `<div class="group"><label class="label" for="defmode">Defense</label><select id="defmode" data-field="defense"><option value="man"${play.defense === 'man' ? ' selected' : ''}>Man to man (follows automatically)</option><option value="hand"${play.defense === 'hand' ? ' selected' : ''}>Placed by hand</option><option value="none"${play.defense === 'none' ? ' selected' : ''}>No defense</option></select></div>`;
+    h += `<div class="group"><label class="label" for="defmode">Defense</label><select id="defmode" data-field="defense"><option value="man"${play.defense === 'man' ? ' selected' : ''}>Man to man (follows automatically)</option><option value="zone"${play.defense === 'zone' ? ' selected' : ''}>Zone (moves automatically)</option><option value="hand"${play.defense === 'hand' ? ' selected' : ''}>Placed by hand</option><option value="none"${play.defense === 'none' ? ' selected' : ''}>No defense</option></select></div>`;
+    if (play.defense === 'zone') h += `<div class="group"><span class="label">Zone</span><div class="opts">${Object.entries(ZONES).map(([key, z]) => opt(esc(z.name) + (key === '2-3' ? ' · most common' : ''), `data-act="zone" data-v="${key}"`, play.zone === key)).join('')}</div><p class="help">2-3 protects the paint and the corners. 3-2 pressures shooters up top and on the wings. 1-3-1 traps the wings and takes away the middle.</p></div>`;
     h += `<div class="group"><span class="label">Ball starts with</span><div class="opts">${play.players.filter((x) => x.side === 'O').map((x) => opt(esc(x.num), `data-act="start-ball" data-id="${x.id}"`, play.ball === x.id)).join('')}</div></div>`;
     h += `<div class="group"><span class="label">Colors</span><div class="opts">${Object.entries(THEMES).map(([key, th]) => opt(`<span class="sw" style="background:${th.O.jersey}"></span><span class="sw" style="background:${th.D.jersey}"></span> ${esc(th.name)}`, `data-act="theme" data-v="${key}"`, play.theme === key)).join('')}</div></div>`;
+    h += `<div class="group"><span class="label">Court</span>${courtControls()}</div>`;
     h += `<div class="group"><span class="label">Whole play</span><div class="opts"><button class="opt" data-action="flip">Flip left ↔ right</button></div></div>`;
   } else {
     const b = play.beats[k];
     const hld = holderAt(play, k);
     h += `<div class="group"><label class="label" for="bname">Beat ${k + 1}</label><input id="bname" type="text" data-beat-field="name" value="${esc(b.name)}" /></div>`;
-    h += `<div class="group"><span class="label">Length</span><div class="row"><div class="stepper"><button data-act="dur" data-v="-0.25" aria-label="Shorter">−</button><output>${b.dur.toFixed(2).replace(/0$/, '')} s</output><button data-act="dur" data-v="0.25" aria-label="Longer">+</button></div></div></div>`;
+    const sp = speedOf(b.dur);
+    h += `<div class="group"><span class="label">Speed</span><div class="opts">${SPEEDS.map(([k2, l, d]) => opt(l, `data-act="speed-beat" data-v="${d}"`, sp === k2)).join('')}</div><p class="help">How long this beat takes when the play runs. Use Quick for a pass, Slow when a lot happens at once.</p></div>`;
     h += `<div class="group"><label class="label" for="btext">What happens</label><textarea id="btext" data-beat-field="text" placeholder="e.g. 5 sets a ball screen for 1">${esc(b.text)}</textarea></div>`;
     h += `<div class="group"><span class="label">Ball</span><p class="help">${hld ? `${esc(nameOf(hld))} has it${b.ball ? (b.ball.kind === 'pass' ? ` and passes to ${esc(nameOf(b.ball.to))}` : ' and shoots') : ''}. Select ${esc(nameOf(hld))} to change that.` : 'The shot is up.'}</p></div>`;
     h += `<p class="note">Drag players to where they end up on this beat. Select a player to set screens, pace, passes and shots.</p>`;
@@ -240,7 +263,7 @@ function renderTimeline() {
   $('time-total').textContent = fmt(total);
   const cur = beatAt(play, ui.T).i;
   const onIdx = ui.playing ? cur : ui.beat;
-  $('blocks').innerHTML = play.beats.map((b, k) => `<button class="block${onIdx === k ? ' on' : ''}" data-beat="${k}" style="flex:${b.dur} 1 0"><b>${k + 1} · ${esc(b.name)}</b><span>${esc(beatSummary(k))}</span><span class="grip" data-grip="${k}" title="Drag to change the length"></span></button>`).join('');
+  $('blocks').innerHTML = play.beats.map((b, k) => `<button class="block${onIdx === k ? ' on' : ''}" data-beat="${k}" style="flex:${b.dur} 1 0"><b>${k + 1} · ${esc(b.name)}</b><span>${esc(beatSummary(k))}</span></button>`).join('');
   const ticks = [];
   for (let s = 0; s <= Math.floor(total); s++) ticks.push(`<span style="left:${(s / total) * 100}%">${s}s</span>`);
   $('ruler').innerHTML = ticks.join('');
@@ -270,19 +293,90 @@ function renderTimeline() {
   }
 }
 
+// ---------- Watch mode: run through the playbook ----------
+function buildQueue() {
+  const mine = libraryIds().map((id) => loadPlay(id)).filter(Boolean);
+  return [
+    ...PRESETS.map((p) => ({ kind: 'preset', id: p.id, cat: p.cat, name: p.name, play: p })),
+    ...mine.map((p) => ({ kind: 'mine', id: p.id, cat: 'My plays', name: p.name, play: p })),
+  ];
+}
+function showQueueItem(i, { autoplay = true } = {}) {
+  const q = ui.queue;
+  if (!q.length) return;
+  ui.qi = (i + q.length) % q.length;
+  const item = q[ui.qi];
+  play = validate(clone(item.play));
+  if (item.kind === 'preset' && ui.editPlay) { play.theme = ui.editPlay.theme; play.court = clone(ui.editPlay.court || {}); }
+  ui.sel = null; ui.beat = -1; ui.T = 0; ui.snap = true; ui.endHold = 0; ui.upNext = 0;
+  $('upnext').hidden = true;
+  renderAll();
+  setPlaying(autoplay);
+  const el = document.querySelector(`.pl-item[data-qi="${ui.qi}"]`);
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+function enterWatch() {
+  if (ui.mode === 'watch') return;
+  savePlay(play);
+  ui.editPlay = clone(play);
+  ui.mode = 'watch';
+  ui.queue = buildQueue();
+  const at = ui.queue.findIndex((x) => x.id === play.id);
+  showQueueItem(at >= 0 ? at : 0);
+}
+function exitWatch({ editThis = false } = {}) {
+  if (ui.mode !== 'watch') return;
+  const item = ui.queue[ui.qi];
+  ui.mode = 'edit';
+  $('upnext').hidden = true;
+  if (editThis && item) {
+    const p = item.kind === 'preset' ? clonePreset(item.id) : loadPlay(item.id);
+    play = null;
+    loadInto(p);
+    toast(item.kind === 'preset' ? `Editing your own copy of “${item.name}”` : `Editing “${item.name}”`);
+  } else {
+    play = validate(ui.editPlay);
+    ui.sel = null; ui.beat = -1; ui.T = 0; ui.snap = true;
+    setPlaying(false);
+    changed({ save: false });
+  }
+}
+function renderPlaylist() {
+  const list = $('playlist');
+  let lastCat = '';
+  const pct = timing(play).total ? Math.min(1, ui.T / timing(play).total) : 0;
+  list.innerHTML = ui.queue.map((q, i) => {
+    const head = q.cat !== lastCat ? `<li class="pl-cat">${esc(q.cat)}</li>` : '';
+    lastCat = q.cat;
+    const on = i === ui.qi;
+    const next = ui.autoplay && i === (ui.qi + 1) % ui.queue.length;
+    return head + `<li><button class="pl-item${on ? ' on' : ''}" data-qi="${i}">${thumbSVG(i === ui.qi ? play : { ...q.play, theme: play.theme, court: play.court }, busiest(q.play), { w: 76 })}<span class="t"><b>${esc(q.name)}</b><span>${q.play.size}v${q.play.size} · ${q.play.beats.length} beats${q.play.defense === 'zone' ? ' · vs zone' : ''}</span>${on ? '<span class="pl-now">Now playing</span>' : next ? '<span class="pl-next">Up next</span>' : ''}</span>${on ? `<span class="pl-bar"><span id="pl-fill" style="width:${pct * 100}%"></span></span>` : ''}</button></li>`;
+  }).join('');
+  $('pl-count').textContent = ui.queue.length;
+  $('autoplay').setAttribute('aria-checked', String(ui.autoplay));
+  $('play-of').textContent = `Play ${ui.qi + 1} of ${ui.queue.length}`;
+}
+
 function renderSide() { renderRoster(); renderInspector(); renderCards(); }
 let lastMarksKey = '';
 function renderAll({ light = false } = {}) {
   $('title').value = play.name;
   document.title = `${play.name} · Court Mode`;
   scene.setPlayers(play.players);
-  scene.setGuards(play.players);
+  scene.setGuards(play.players.map((p) => ({ id: p.id, guard: play.defense === 'man' ? p.guard : null })));
   const t = THEMES[play.theme];
   if (scene.theme !== play.theme) scene.setTheme(play.theme);
+  scene.setCourt(courtLook(play));
   const r = document.documentElement.style;
   r.setProperty('--o', t.O.jersey); r.setProperty('--o-ink', t.O.num); r.setProperty('--d', t.D.jersey); r.setProperty('--d-ink', t.D.num);
   lastMarksKey = '';
-  if (!light) { renderSide(); renderTimeline(); }
+  const watching = ui.mode === 'watch';
+  $('app').classList.toggle('watching', watching);
+  document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === ui.mode)));
+  $('title').readOnly = watching;
+  $('saved').hidden = watching;
+  if (watching) { renderPlaylist(); renderTimeline(); }
+  else if (!light) { renderSide(); renderTimeline(); }
   else renderCards();
   updateHandles();
   updateHint();
@@ -307,7 +401,8 @@ function updateHandles() {
 
 function updateHint() {
   let s;
-  if (ui.playing) s = 'Playing · press Space to pause and edit';
+  if (ui.mode === 'watch') s = 'Watching · Space to pause · click a beat to replay it';
+  else if (ui.playing) s = 'Playing · press Space to pause and edit';
   else if (ui.beat < 0) s = 'Start · drag players to where they line up';
   else if (ui.sel && canDrag(ui.sel)) s = `Beat ${ui.beat + 1} · drag ${nameOf(ui.sel)} to where they end up · drag the white rings to bend the path`;
   else s = `Beat ${ui.beat + 1} · drag a player to where they end up on this beat · right-drag to rotate the camera`;
@@ -324,9 +419,23 @@ function frame(nowMs) {
   const dt = ui.fixedDt || real;
   clockNow += dt;
   const { total } = timing(play);
+  if (ui.T > total) ui.T = total;
   if (ui.playing) {
     if (ui.T < total) ui.T = Math.min(total, ui.T + dt * ui.speed);
-    else if ((ui.endHold += dt) > 1.6) {
+    else if (ui.mode === 'watch' && ui.autoplay && ui.queue.length > 1) {
+      // Hold the last frame, show "Up next", then move on.
+      ui.endHold += dt;
+      const up = $('upnext');
+      if (ui.endHold > 0.6 && up.hidden) {
+        const nx = ui.queue[(ui.qi + 1) % ui.queue.length];
+        $('un-name').textContent = nx.name;
+        $('un-meta').textContent = `${nx.cat} · ${nx.play.beats.length} beats`;
+        $('un-thumb').innerHTML = thumbSVG({ ...nx.play, theme: play.theme, court: play.court }, busiest(nx.play), { w: 96 });
+        up.hidden = false;
+      }
+      $('un-fill').style.width = `${Math.min(1, Math.max(0, (ui.endHold - 0.6) / 3)) * 100}%`;
+      if (ui.endHold > 3.6) showQueueItem(ui.qi + 1);
+    } else if ((ui.endHold += dt) > 1.6) {
       if (ui.loop) { ui.T = 0; ui.endHold = 0; ui.snap = true; } else setPlaying(false);
     }
   }
@@ -349,6 +458,7 @@ function frame(nowMs) {
   $('playhead').style.left = `calc(${(ui.T / total) * 100}% - 1px)`;
   $('time-now').textContent = fmt(ui.T);
   $('clock').textContent = Math.max(0, 24 - ui.T).toFixed(1);
+  if (ui.mode === 'watch') { const pf = $('pl-fill'); if (pf) pf.style.width = `${Math.min(100, (ui.T / total) * 100)}%`; }
   if (!ui.manual) requestAnimationFrame(frame);
 }
 
@@ -356,8 +466,8 @@ function frame(nowMs) {
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, [data-beat]');
   if (!t) return;
-  if (t.dataset.grip !== undefined) return;
   const a = t.dataset.action || t.dataset.act;
+  if (t.dataset.beat !== undefined && !a && ui.mode === 'watch') { ui.T = timing(play).starts[Number(t.dataset.beat)] + 0.001; ui.snap = true; ui.endHold = 0; $('upnext').hidden = true; setPlaying(true); return; }
   if (t.dataset.beat !== undefined && !a) {
     selectBeat(Number(t.dataset.beat));
     if (t.dataset.sel) { ui.sel = t.dataset.sel; renderAll(); }
@@ -365,16 +475,29 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (t.dataset.sel && !a) { ui.sel = ui.sel === t.dataset.sel ? null : t.dataset.sel; renderAll(); return; }
+  if (t.dataset.mode) { if (t.dataset.mode === 'watch') enterWatch(); else exitWatch(); return; }
+  if (t.dataset.qi !== undefined) { showQueueItem(Number(t.dataset.qi)); if (innerWidth <= 900) $('left').classList.remove('open'); return; }
   if (t.dataset.view) { scene.setView(t.dataset.view); markView(); return; }
   if (t.dataset.toggle) { ui[t.dataset.toggle] = !ui[t.dataset.toggle]; renderAll(); return; }
   if (t.dataset.tl) { ui.tl = t.dataset.tl; renderTimeline(); return; }
+  if (t.dataset.court) {
+    const k = t.dataset.court, v = t.dataset.v;
+    mutate(() => { play.court = play.court || {}; if (k === 'paint' && v === '__team') delete play.court.paint; else if (k === 'border' && !v) delete play.court.border; else play.court[k] = v; });
+    if (!$('court-pop').hidden) openCourtPop();
+    return;
+  }
   if (t.dataset.look) { const id = ui.sel; mutate(() => { playerOf(id).look[t.dataset.look] = t.dataset.v; }); return; }
   if (t.dataset.close !== undefined) { t.closest('dialog').close(); return; }
   const k = ui.beat, id = ui.sel;
   switch (a) {
     case 'play': setPlaying(!ui.playing); break;
-    case 'prev': selectBeat(ui.beat - 1); break;
-    case 'next': selectBeat(ui.beat + 1); break;
+    case 'prev': if (ui.mode === 'watch') showQueueItem(ui.qi - 1); else selectBeat(ui.beat - 1); break;
+    case 'next': if (ui.mode === 'watch') showQueueItem(ui.qi + 1); else selectBeat(ui.beat + 1); break;
+    case 'watch-all': $('playbook').close(); enterWatch(); break;
+    case 'edit-this': exitWatch({ editThis: true }); break;
+    case 'autoplay': ui.autoplay = !ui.autoplay; if (!ui.autoplay) $('upnext').hidden = true; renderPlaylist(); break;
+    case 'upnext-now': showQueueItem(ui.qi + 1); break;
+    case 'upnext-stay': ui.autoplay = false; $('upnext').hidden = true; ui.T = 0; ui.endHold = 0; ui.snap = true; renderPlaylist(); break;
     case 'speed': ui.speed = ui.speed === 1 ? 0.5 : ui.speed === 0.5 ? 0.25 : 1; t.textContent = ui.speed + '×'; break;
     case 'undo': undo(); break;
     case 'redo': redo(); break;
@@ -382,7 +505,7 @@ document.addEventListener('click', async (e) => {
     case 'add-beat': addBeat(); break;
     case 'dup-beat': mutate(() => { const b = clone(play.beats[k]); b.id = uid(); b.name = b.name + ' (copy)'; for (const m of Object.values(b.moves)) { delete m.to; delete m.wp; } play.beats.splice(k + 1, 0, b); }); selectBeat(k + 1); break;
     case 'del-beat': if (play.beats.length > 1) { const name = play.beats[k].name; mutate(() => play.beats.splice(k, 1)); selectBeat(Math.min(k, play.beats.length - 1)); toast(`Deleted “${name}”`, { label: 'Undo', run: undo }); } break;
-    case 'dur': mutate(() => { const b = play.beats[k]; b.dur = Math.max(0.5, Math.min(8, Math.round((b.dur + Number(t.dataset.v)) * 4) / 4)); }); ui.T = endOf(k); break;
+    case 'speed-beat': mutate(() => { play.beats[k].dur = Number(t.dataset.v); }); ui.T = endOf(k); break;
     case 'act': mutate(() => { ensureMove(id).act = t.dataset.v; tidy(); }); break;
     case 'pace': mutate(() => { ensureMove(id).pace = t.dataset.v; tidy(); }); break;
     case 'straighten': mutate(() => { delete ensureMove(id).wp; tidy(); }); break;
@@ -395,6 +518,8 @@ document.addEventListener('click', async (e) => {
       if (k === play.beats.length - 1 && b.ball && b.ball.kind === 'pass') { /* passes on the last beat are fine */ }
     }); break;
     case 'when': mutate(() => { const b = play.beats[k].ball; const t0 = { early: 0.08, mid: 0.35, late: 0.6 }[t.dataset.v]; b.t0 = t0; b.t1 = Math.min(0.98, t0 + (b.kind === 'shot' ? 0.45 : 0.32)); }); break;
+    case 'zone': mutate(() => { play.zone = t.dataset.v; }); break;
+    case 'court-pop': if ($('court-pop').hidden) openCourtPop(); else closePops(); break;
     case 'start-ball': mutate(() => { play.ball = t.dataset.id; }); break;
     case 'theme': mutate(() => { play.theme = t.dataset.v; }); closePops(); break;
     case 'colors-pop': togglePop(); break;
@@ -405,7 +530,7 @@ document.addEventListener('click', async (e) => {
     case 'toggle-right': $('right').classList.toggle('open'); $('left').classList.remove('open'); break;
     case 'load-preset': loadInto(clonePreset(t.dataset.id)); $('playbook').close(); break;
     case 'open-mine': { const p = loadPlay(t.dataset.id); if (p) loadInto(p); $('playbook').close(); break; }
-    case 'del-mine': { if (t.dataset.id === play.id) { toast('That play is open. Open another one first.'); break; } deletePlay(t.dataset.id); renderPlaybook(); toast('Play deleted'); break; }
+    case 'del-mine': { if (t.dataset.id === play.id) { toast('That play is open right now. Open another one first.'); break; } const gone = loadPlay(t.dataset.id); deletePlay(t.dataset.id); renderPlaybook(); toast(`Deleted “${gone ? gone.name : 'play'}”`, { label: 'Undo', run: () => { if (gone) { savePlay(gone); savePlay(play); renderPlaybook(); } } }); break; }
     case 'filter': ui.filter = t.dataset.v; renderPlaybook(); break;
     default: break;
   }
@@ -413,6 +538,7 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.dataset.courtLabel !== undefined) { const v = t.value.trim(); mutate(() => { play.court = play.court || {}; if (v) play.court.label = v; else delete play.court.label; }); if (!$('court-pop').hidden) openCourtPop(); return; }
   if (t.dataset.act === 'dribble') { mutate(() => { play.beats[ui.beat].dribble = t.checked; }); return; }
   if (t.dataset.field === 'defense') { mutate(() => { play.defense = t.value; }); return; }
   if (t.dataset.field === 'guard') { const id = ui.sel; mutate(() => { playerOf(id).guard = t.value; }); return; }
@@ -437,8 +563,9 @@ addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (typing) return;
   if (e.key === ' ' && !e.target.closest('dialog')) { e.preventDefault(); if (tag === 'BUTTON') e.target.blur(); setPlaying(!ui.playing); }
-  else if (e.key === '[') selectBeat(ui.beat - 1);
-  else if (e.key === ']') selectBeat(ui.beat + 1);
+  else if (e.key === '[') $('app').querySelector('[data-action="prev"]').click();
+  else if (e.key === ']') $('app').querySelector('[data-action="next"]').click();
+  else if (ui.mode === 'watch') return;
   else if (e.key === 'Escape') { ui.sel = null; closePops(); renderAll(); }
   else if (e.key.toLowerCase() === 'b') addBeat();
   else if ((e.key === 'Delete' || e.key === 'Backspace') && ui.sel && ui.beat >= 0 && canDrag(ui.sel)) {
@@ -463,36 +590,17 @@ $('ruler').addEventListener('pointerdown', (e) => {
   e.target.addEventListener('pointermove', move);
   e.target.addEventListener('pointerup', up);
 });
-$('blocks').addEventListener('pointerdown', (e) => {
-  const g = e.target.closest('[data-grip]');
-  if (!g) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const k = Number(g.dataset.grip);
-  const before = snapshot();
-  const r = $('blocks').getBoundingClientRect();
-  const pxPerSec = r.width / timing(play).total;
-  const startX = e.clientX, startDur = play.beats[k].dur;
-  g.setPointerCapture(e.pointerId);
-  const move = (ev) => {
-    play.beats[k].dur = Math.max(0.5, Math.min(8, Math.round((startDur + (ev.clientX - startX) / pxPerSec) * 4) / 4));
-    ui.beat = k; ui.T = endOf(k);
-    renderTimeline(); renderCards();
-  };
-  const up = () => { g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); if (snapshot() !== before) { pushUndo(before); changed(); } };
-  g.addEventListener('pointermove', move);
-  g.addEventListener('pointerup', up);
-});
-
 function markView() { document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === scene.view))); }
 
 function togglePop() {
   const pop = $('colors-pop');
   if (!pop.hidden) return closePops();
+  $('court-pop').hidden = true;
   pop.innerHTML = Object.entries(THEMES).map(([key, th]) => `<button data-act="theme" data-v="${key}" aria-pressed="${play.theme === key}"><span class="sw" style="background:${th.O.jersey}"></span><span class="sw" style="background:${th.D.jersey}"></span>${esc(th.name)}</button>`).join('');
   pop.hidden = false;
 }
-function closePops() { $('colors-pop').hidden = true; }
+function closePops() { $('colors-pop').hidden = true; $('court-pop').hidden = true; }
+function openCourtPop() { $('colors-pop').hidden = true; const pop = $('court-pop'); pop.innerHTML = courtControls(); pop.hidden = false; }
 document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.pop-wrap')) closePops(); });
 
 // ---------- Playbook, new play, share ----------
@@ -509,14 +617,27 @@ function busiest(p) {
   return best;
 }
 function renderPlaybook() {
-  const cats = ['All', ...new Set(PRESETS.map((p) => p.cat))];
-  $('pb-filters').innerHTML = cats.map((c) => `<button data-act="filter" data-v="${esc(c)}" aria-pressed="${ui.filter === c}">${esc(c)}</button>`).join('');
-  $('pb-grid').innerHTML = PRESETS.filter((p) => ui.filter === 'All' || p.cat === ui.filter).map((p) => {
-    const shown = { ...p, theme: play.theme };
-    return `<article class="pb-card">${thumbSVG(shown, busiest(p), { w: 320 })}<div class="body"><h4>${esc(p.name)}<small>${p.beats.length} beats</small></h4><p>${esc(p.blurb)}</p><p class="beats">${p.beats.map((b, k) => `${k + 1} ${esc(b.name)}`).join(' · ')}</p><div class="acts"><button class="btn primary" data-act="load-preset" data-id="${p.id}">Load play</button></div></div></article>`;
-  }).join('');
+  const cats = [...new Set(PRESETS.map((p) => p.cat))];
   const mine = libraryIds().map((id) => loadPlay(id)).filter(Boolean);
-  $('pb-mine').innerHTML = mine.length ? mine.map((p) => `<article class="pb-card">${thumbSVG(p, busiest(p), { w: 320 })}<div class="body"><h4>${esc(p.name)}<small>${new Date(savedAt(p.id) || Date.now()).toLocaleDateString()}</small></h4><p>${p.size} v ${p.size} · ${p.beats.length} beats${p.id === play.id ? ' · open now' : ''}</p><div class="acts"><button class="btn" data-act="open-mine" data-id="${p.id}">Open</button><button class="btn danger" data-act="del-mine" data-id="${p.id}" aria-label="Delete ${esc(p.name)}">${icon('trash', 16)}</button></div></div></article>`).join('') : '<p class="empty">Plays you make are saved in this browser and show up here.</p>';
+  if (ui.filter !== 'mine' && !cats.includes(ui.filter)) ui.filter = cats[0];
+  const nav = cats.map((c) => `<button data-act="filter" data-v="${esc(c)}" aria-pressed="${ui.filter === c}"><span>${esc(c)}</span><span class="n">${PRESETS.filter((p) => p.cat === c).length}</span></button>`).join('') +
+    `<hr /><button data-act="filter" data-v="mine" aria-pressed="${ui.filter === 'mine'}"><span>My plays</span><span class="n">${mine.length}</span></button>`;
+  $('pb-nav').innerHTML = nav;
+  const body = $('pb-body');
+  if (ui.filter === 'mine') {
+    $('pb-title').textContent = 'My plays';
+    $('pb-desc').textContent = 'Plays you make are saved in this browser. Use Share to move one to another device.';
+    body.innerHTML = mine.length ? `<ul class="pb-list">${mine.map((p) => `<li>
+      <button class="pb-row" data-act="open-mine" data-id="${p.id}">${thumbSVG(p, busiest(p), { w: 96 })}<span class="t"><b>${esc(p.name)}</b><span>${p.size}v${p.size} · ${p.beats.length} beats · saved ${new Date(savedAt(p.id) || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span>${p.id === play.id ? '<span class="badge">Open now</span>' : ''}</button>
+      <button class="icon-btn danger" data-act="del-mine" data-id="${p.id}" aria-label="Delete ${esc(p.name)}" title="Delete">${icon('trash', 16)}</button></li>`).join('')}</ul>` : '<p class="empty">Nothing saved yet. Plays you make show up here.</p>';
+    return;
+  }
+  $('pb-title').textContent = ui.filter;
+  $('pb-desc').textContent = ui.filter === 'Easy' ? 'One idea each, a few beats. Good for learning a play or walking a team through it.' : 'Common half-court sets, each broken into beats.';
+  body.innerHTML = `<div class="pb-grid">${PRESETS.filter((p) => p.cat === ui.filter).map((p) => {
+    const shown = { ...p, theme: play.theme, court: play.court };
+    return `<button class="pb-card" data-act="load-preset" data-id="${p.id}">${thumbSVG(shown, busiest(p), { w: 240 })}<span class="t"><b>${esc(p.name)}</b><span class="meta">${p.size}v${p.size} · ${p.beats.length} beats${p.defense === 'zone' ? ' · vs 2-3 zone' : ''}</span><span class="blurb">${esc(p.blurb)}</span></span><span class="load">Load</span></button>`;
+  }).join('')}</div>`;
 }
 function openPlaybook() { renderPlaybook(); $('playbook').showModal(); }
 function openNew() {
@@ -548,7 +669,7 @@ async function share() {
 
 // ---------- Recording hook ----------
 window.__court = {
-  get play() { return play; }, ui, scene, setPlaying, selectBeat, loadInto, PRESETS,
+  get play() { return play; }, ui, scene, setPlaying, selectBeat, loadInto, PRESETS, enterWatch, exitWatch, showQueueItem,
   step(dt) { ui.manual = true; ui.fixedDt = dt; frame(performance.now()); },
 };
 
@@ -569,6 +690,7 @@ async function boot() {
   ui.beat = -1; ui.T = 0;
   renderAll();
   setPlaying(new URLSearchParams(location.search).get('autoplay') === '1');
+  if (new URLSearchParams(location.search).get('mode') === 'watch') enterWatch();
   requestAnimationFrame(frame);
 }
 boot();

@@ -4,8 +4,9 @@
 // dr = dribble in place.
 import { newPlay, uid, validate } from './model.js';
 
-function def({ id, name, cat, blurb, start, ball = 1, beats }) {
-  const p = newPlay({ name });
+function def({ id, name, cat, blurb, start, ball = 1, beats, size = 5, defense = 'man', zone }) {
+  const p = newPlay({ name, size, defense });
+  if (zone) p.zone = zone;
   p.id = 'preset-' + id;
   p.cat = cat;
   p.blurb = blurb;
@@ -24,7 +25,130 @@ function def({ id, name, cat, blurb, start, ball = 1, beats }) {
   return validate(p);
 }
 
+const FIVE_OUT = { 1: [250, 320], 2: [80, 230], 3: [420, 230], 4: [40, 40], 5: [460, 40] };
+
 export const PRESETS = [
+  // ---------- Easy: one idea each, a few beats ----------
+  def({
+    id: 'drive-kick', name: 'Drive and kick', cat: 'Easy',
+    blurb: 'Five out. 1 drives the gap and kicks it to the open corner for three.',
+    start: FIVE_OUT,
+    beats: [
+      ['Spread out', 1.0, 'Everyone spaced around the arc: top, both wings, both corners.', { dr: true }],
+      ['Drive', 1.6, '1 attacks the right side of the lane.', { m: { 1: [[275, 250], [300, 150]] }, pc: { 1: 'early' } }],
+      ['Kick out', 1.0, '1 kicks it out to 5 in the right corner.', { b: ['pass', 5, 0.1, 0.6] }],
+      ['Corner three', 1.3, '5 catches and shoots.', { b: ['shot', 0.15, 0.7] }],
+    ],
+  }),
+  def({
+    id: 'pick-pop', name: 'Pick and pop', cat: 'Easy',
+    blurb: '4 screens for 1, then pops out for an open jumper instead of rolling.',
+    start: { 1: [250, 330], 2: [40, 40], 3: [460, 40], 4: [320, 195], 5: [170, 80] },
+    beats: [
+      ['Set', 1.0, '1 up top, 4 at the right elbow, 5 on the left block.', { dr: true }],
+      ['Screen', 1.3, '4 comes up and screens for 1.', { m: { 4: [[285, 300]] }, s: [4], dr: true }],
+      ['Drive and pop', 1.7, '1 goes left off the screen. 4 pops out to the right side.', { m: { 1: [[205, 295], [150, 245]], 4: [[330, 305], [385, 290]] } }],
+      ['Pass', 1.0, '1 throws it back to 4.', { b: ['pass', 4, 0.1, 0.6] }],
+      ['Jumper', 1.3, '4 shoots the open jumper.', { b: ['shot', 0.15, 0.7] }],
+    ],
+  }),
+  def({
+    id: 'pass-cut', name: 'Pass and cut', cat: 'Easy',
+    blurb: 'The basic motion rule: pass, cut to the rim, everyone slides over a spot.',
+    start: FIVE_OUT,
+    beats: [
+      ['Pass', 1.0, '1 passes to 2 on the left wing.', { b: ['pass', 2, 0.15, 0.6] }],
+      ['Cut', 1.5, '1 cuts straight to the rim looking for the ball.', { m: { 1: [[245, 190], [250, 80]] }, pc: { 1: 'explode' } }],
+      ['Fill', 1.7, '1 clears to the right corner. 5 lifts to the wing, 3 slides to the top.', { m: { 1: [[360, 55], [460, 40]], 5: [[440, 130], [420, 230]], 3: [[340, 290], [250, 320]] } }],
+      ['Swing', 1.0, '2 swings it to 3 at the top.', { b: ['pass', 3, 0.1, 0.6] }],
+      ['Swing again', 1.0, '3 swings it to 5 on the right wing.', { b: ['pass', 5, 0.1, 0.6] }],
+      ['Shot', 1.3, '5 shoots from the wing.', { b: ['shot', 0.15, 0.7] }],
+    ],
+  }),
+  def({
+    id: 'dho', name: 'Dribble handoff', cat: 'Easy',
+    blurb: '1 dribbles at 2 and hands it off. 2 comes around and attacks the rim.',
+    start: FIVE_OUT,
+    beats: [
+      ['Set', 1.0, 'Five out. 1 has it up top.', { dr: true }],
+      ['Dribble at', 1.4, '1 dribbles toward 2 on the left wing.', { m: { 1: [[190, 290], [125, 250]] } }],
+      ['Handoff', 1.1, '2 runs past 1 and takes the handoff. 1 stays to screen.', { m: { 2: [[95, 260], [150, 285]] }, s: [1], b: ['pass', 2, 0.35, 0.6] }],
+      ['Drive', 1.5, '2 attacks the rim.', { m: { 2: [[215, 220], [238, 105]] }, pc: { 2: 'early' } }],
+      ['Layup', 1.2, '2 lays it in.', { b: ['shot', 0.1, 0.6] }],
+    ],
+  }),
+  def({
+    id: 'down-screen', name: 'Down screen for a shooter', cat: 'Easy',
+    blurb: '4 screens down, 2 pops out to the wing for an open catch-and-shoot.',
+    start: { 1: [250, 320], 2: [170, 70], 3: [420, 230], 4: [130, 205], 5: [330, 80] },
+    beats: [
+      ['Set', 1.0, '2 on the left block, 4 above them on the wing.', { dr: true }],
+      ['Down screen', 1.3, '4 comes down and screens for 2.', { m: { 4: [[160, 120]] }, s: [4], dr: true }],
+      ['Pop out', 1.5, '2 pops out to the left wing off the screen.', { m: { 2: [[125, 120], [95, 220]] }, pc: { 2: 'explode' }, dr: true }],
+      ['Pass', 1.0, '1 hits 2 on the wing.', { b: ['pass', 2, 0.1, 0.6] }],
+      ['Shot', 1.3, '2 catches and shoots.', { b: ['shot', 0.15, 0.7] }],
+    ],
+  }),
+  def({
+    id: 'post-up', name: 'Post up', cat: 'Easy',
+    blurb: 'Get it to the wing, feed the big on the block, back down for a hook.',
+    start: { 1: [250, 320], 2: [80, 230], 3: [420, 230], 4: [40, 40], 5: [330, 85] },
+    beats: [
+      ['Pass to wing', 1.0, '1 passes to 3 on the right wing.', { b: ['pass', 3, 0.15, 0.6] }],
+      ['Seal', 1.0, '5 seals their defender on the right block.', { m: { 5: [[322, 98]] } }],
+      ['Post entry', 1.0, '3 feeds 5 in the post.', { b: ['pass', 5, 0.1, 0.55] }],
+      ['Back down', 1.6, '5 dribbles back toward the rim.', { m: { 5: [[300, 80], [284, 66]] } }],
+      ['Hook shot', 1.3, '5 turns and shoots a hook.', { b: ['shot', 0.15, 0.7] }],
+    ],
+  }),
+  def({
+    id: 'iso', name: 'Isolation', cat: 'Easy',
+    blurb: 'Everyone clears to the corners and wings so 1 can go one on one.',
+    start: { 1: [250, 320], 2: [80, 230], 3: [420, 230], 4: [180, 190], 5: [320, 190] },
+    beats: [
+      ['Clear out', 1.5, 'The bigs clear to the corners and the wings get low. The middle is empty.', { m: { 4: [[110, 120], [40, 40]], 5: [[390, 120], [460, 40]], 2: [[60, 150]], 3: [[440, 150]] }, dr: true }],
+      ['Attack', 1.7, '1 drives at their defender and gets to the rim.', { m: { 1: [[225, 235], [255, 110]] }, pc: { 1: 'late' } }],
+      ['Finish', 1.2, '1 finishes.', { b: ['shot', 0.1, 0.6] }],
+    ],
+  }),
+  def({
+    id: 'two-pnr', name: '2-on-2 pick and roll', cat: 'Easy', size: 2,
+    blurb: 'The simplest two-player action: screen, roll, pass, layup.',
+    start: { 1: [250, 320], 2: [330, 190] },
+    beats: [
+      ['Set', 1.0, '1 up top, 2 at the right elbow.', { dr: true }],
+      ['Screen', 1.3, '2 sets a ball screen.', { m: { 2: [[285, 300]] }, s: [2], dr: true }],
+      ['Roll', 1.7, '1 comes off the screen. 2 rolls to the rim.', { m: { 1: [[330, 290], [372, 255]], 2: [[300, 190], [265, 90]] }, pc: { 2: 'explode' } }],
+      ['Pass', 1.0, '1 hits 2.', { b: ['pass', 2, 0.1, 0.55] }],
+      ['Layup', 1.2, '2 lays it in.', { b: ['shot', 0.1, 0.6] }],
+    ],
+  }),
+  def({
+    id: 'three-screen-away', name: '3-on-3 pass and screen away', cat: 'Easy', size: 3,
+    blurb: 'Pass one way, screen the other way. 3 cuts off the screen to the rim.',
+    start: { 1: [250, 310], 2: [80, 190], 3: [420, 190] },
+    beats: [
+      ['Pass', 1.0, '1 passes to 2 on the left.', { b: ['pass', 2, 0.15, 0.6] }],
+      ['Screen away', 1.4, '1 goes away from the ball to screen for 3.', { m: { 1: [[330, 260], [385, 215]] }, s: [1] }],
+      ['Cut', 1.6, '3 comes off the screen and cuts to the rim.', { m: { 3: [[400, 260], [330, 230], [268, 110]] }, pc: { 3: 'explode' } }],
+      ['Pass', 1.0, '2 hits 3 on the cut.', { b: ['pass', 3, 0.05, 0.5] }],
+      ['Layup', 1.2, '3 finishes.', { b: ['shot', 0.1, 0.6] }],
+    ],
+  }),
+  def({
+    id: 'zone-gap', name: 'Beat the 2-3 zone', cat: 'Easy', defense: 'zone', zone: '2-3',
+    blurb: 'Against a 2-3 zone: flash to the middle, then kick to the open corner.',
+    start: { 1: [250, 320], 2: [90, 240], 3: [410, 240], 4: [40, 45], 5: [330, 70] },
+    beats: [
+      ['Set', 1.0, 'Players sit in the gaps of the zone. 5 on the right short block.', { dr: true }],
+      ['Flash', 1.4, '5 flashes to the free-throw line, the soft middle of the 2-3.', { m: { 5: [[300, 130], [255, 190]] }, pc: { 5: 'explode' }, dr: true }],
+      ['High post', 1.0, '1 hits 5 at the free-throw line.', { b: ['pass', 5, 0.1, 0.55] }],
+      ['Kick to corner', 1.0, 'The zone collapses on 5, so 5 kicks to 4 in the left corner.', { b: ['pass', 4, 0.15, 0.65] }],
+      ['Corner three', 1.3, '4 shoots.', { b: ['shot', 0.15, 0.7] }],
+    ],
+  }),
+
+  // ---------- Sets ----------
   def({
     id: 'yesterday', name: 'Backdoor, stagger, cross', cat: 'Cuts',
     blurb: 'Backdoor cut, come up off two stacked screens, then the low screener cuts across.',
