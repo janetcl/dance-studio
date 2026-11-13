@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261114b';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114b';
+import { Player } from './players.js?v=20261114d';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114d';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -18,7 +18,7 @@ function courtTexture(look) {
   const g = c.getContext('2d');
   const X = (u) => (u - U0) * S, Y = (v) => (v - V0) * S;
   const fl = FLOORS[look.floor] || FLOORS.maple;
-  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'garden' ? '#1A1B20' : look.scene === 'park' ? '#8E8C86' : look.scene === 'beach' ? '#D9BE94' : '#2B2A28';
+  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'garden' ? '#1A1B20' : look.scene === 'park' ? '#8E8C86' : look.scene === 'beach' ? '#D9BE94' : look.scene === 'gym' ? '#B98F5E' : '#2B2A28';
   g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = look.border;
   g.fillRect(X(-30), Y(-60), 560 * S, 560 * S);
@@ -338,9 +338,10 @@ export class CourtScene {
   }
 
   // What's around the court: nothing (studio / arena) or a New York City park.
-  setSurroundings(type) {
-    if (this.surroundType === type) return;
-    this.surroundType = type;
+  setSurroundings(type, team) {
+    const key = type + (type === 'gym' && team ? team.paint : '');
+    if (this.surroundType === key) return;
+    this.surroundType = key;
     if (this.surround) { this.scene.remove(this.surround); this.surround.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); this.surround = null; }
     this.netMat.color.set(type === 'park' ? '#A9AEB3' : '#F6F3EC');
     this.netMat.metalness = type === 'park' ? 0.85 : 0;
@@ -348,6 +349,7 @@ export class CourtScene {
     const rnd = (() => { let x = 7; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
     if (type === 'garden') { this.buildGarden(rnd); return; }
     if (type === 'beach') { this.buildBeach(rnd); return; }
+    if (type === 'gym') { this.buildGym(rnd, team); return; }
     if (type !== 'park') return;
     const g = (this.surround = new THREE.Group());
     // Sky dome
@@ -428,6 +430,95 @@ export class CourtScene {
     for (let x = -70; x < 70; x += 9 + rnd() * 6) building(x, -42 - rnd() * 12, 8 + rnd() * 6, 10, 14 + rnd() * 30);
     for (let z = -36; z < 30; z += 10 + rnd() * 6) { building(-46 - rnd() * 8, z, 10, 9 + rnd() * 5, 12 + rnd() * 24); building(46 + rnd() * 8, z, 10, 9 + rnd() * 5, 12 + rnd() * 24); }
     for (let x = -50; x < 50; x += 12 + rnd() * 8) building(x, -75 - rnd() * 15, 10 + rnd() * 6, 12, 40 + rnd() * 50);
+    this.scene.add(g);
+  }
+
+  // A school gym: block walls with a padded band, wooden bleachers with a few fans,
+  // banners in the home team's color, a scoreboard and ceiling lights. Walls and ceiling
+  // face inward only, so cameras outside them (top, baseline) still see in.
+  buildGym(rnd, team) {
+    const g = (this.surround = new THREE.Group());
+    const accent = (team && team.paint) || '#2D4E9C';
+    const X = 17, ZB = -14.5, ZF = 21, H = 9;
+    const blockTex = (() => {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+      const x = c.getContext('2d');
+      x.fillStyle = '#E4DED2'; x.fillRect(0, 0, 256, 256);
+      x.strokeStyle = 'rgba(120,105,85,.18)'; x.lineWidth = 2;
+      for (let r = 0; r < 8; r++) { const y = r * 32; x.beginPath(); x.moveTo(0, y); x.lineTo(256, y); x.stroke(); for (let q = 0; q < 4; q++) { const xx = q * 64 + (r % 2) * 32; x.beginPath(); x.moveTo(xx, y); x.lineTo(xx, y + 32); x.stroke(); } }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+    })();
+    const wall = (w, pos, rotY) => {
+      const t = blockTex.clone(); t.needsUpdate = true; t.repeat.set(w / 3, H / 3);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, H), new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }));
+      m.position.set(pos[0], H / 2, pos[2]); m.rotation.y = rotY; g.add(m);
+      const pad = new THREE.Mesh(new THREE.PlaneGeometry(w, 1.9), new THREE.MeshStandardMaterial({ color: accent, roughness: 0.8 }));
+      pad.position.set(pos[0], 0.95, pos[2]); pad.rotation.y = rotY; pad.translateZ(0.02); g.add(pad);
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.12), new THREE.MeshStandardMaterial({ color: '#F2EEE6', roughness: 0.6 }));
+      stripe.position.set(pos[0], 1.96, pos[2]); stripe.rotation.y = rotY; stripe.translateZ(0.025); g.add(stripe);
+    };
+    wall(2 * X, [0, 0, ZB], 0);
+    wall(ZF - ZB, [-X, 0, (ZB + ZF) / 2], Math.PI / 2);
+    wall(ZF - ZB, [X, 0, (ZB + ZF) / 2], -Math.PI / 2);
+    wall(2 * X, [0, 0, ZF], Math.PI);
+    // Wood floor beyond the court lines
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(2 * X, ZF - ZB), new THREE.MeshStandardMaterial({ color: '#B88F5E', roughness: 0.6 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.015, (ZB + ZF) / 2); floor.receiveShadow = true; g.add(floor);
+    // Ceiling, seen only from below, with rows of lights
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(2 * X, ZF - ZB), new THREE.MeshStandardMaterial({ color: '#CFC8BC', roughness: 1 }));
+    ceil.rotation.x = Math.PI / 2; ceil.position.set(0, H, (ZB + ZF) / 2); g.add(ceil);
+    const lightMat = new THREE.MeshBasicMaterial({ color: '#FFF7E6' });
+    for (let x = -10; x <= 10; x += 5) for (let z = -10; z <= 18; z += 7) {
+      const l = new THREE.Mesh(new THREE.CircleGeometry(0.45, 20), lightMat);
+      l.rotation.x = Math.PI / 2; l.position.set(x, H - 0.02, z); g.add(l);
+    }
+    // Bleachers along both sidelines
+    const woodMat = new THREE.MeshStandardMaterial({ color: '#C79A62', roughness: 0.7 });
+    const riserMat = new THREE.MeshStandardMaterial({ color: '#8C6A45', roughness: 0.8 });
+    const crowd = (() => {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 32;
+      const x = c.getContext('2d');
+      // About 1 px per cm: people are ~45 cm wide on a 22 m bench.
+      const shirts = [accent, '#1D1A17', '#F4F2EE', '#C9A15A', '#6E675D', '#B3202E', accent];
+      const skins = ['#F1C9A5', '#E0AC80', '#C68B5E', '#8D5A3B', '#5B3A29'];
+      for (let q = 0; q < 26; q++) {
+        if (rnd() < 0.55) continue;
+        const px = q * 20 + 2 + rnd() * 4;
+        x.fillStyle = shirts[Math.floor(rnd() * shirts.length)];
+        x.beginPath(); x.moveTo(px + 1, 32); x.lineTo(px + 2, 15); x.quadraticCurveTo(px + 8, 11, px + 14, 15); x.lineTo(px + 15, 32); x.closePath(); x.fill();
+        x.fillStyle = skins[Math.floor(rnd() * skins.length)]; x.beginPath(); x.arc(px + 8, 8, 4.6, 0, Math.PI * 2); x.fill();
+      }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; return t;
+    })();
+    for (const side of [-1, 1]) {
+      for (let r = 0; r < 6; r++) {
+        const x0 = side * (11.2 + r * 0.75), y0 = 0.42 + r * 0.42;
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 22), woodMat);
+        seat.position.set(x0, y0, 1.5); seat.castShadow = true; seat.receiveShadow = true; g.add(seat);
+        const riser = new THREE.Mesh(new THREE.BoxGeometry(0.06, y0, 22), riserMat);
+        riser.position.set(x0 + side * 0.33, y0 / 2, 1.5); g.add(riser);
+        const t = crowd.clone(); t.needsUpdate = true; t.repeat.set(1.6 + r * 0.15, 1); t.offset.x = rnd();
+        const fans = new THREE.Mesh(new THREE.PlaneGeometry(22, 0.75), new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }));
+        fans.position.set(x0, y0 + 0.4, 1.5); fans.rotation.y = side * Math.PI / 2; g.add(fans);
+      }
+    }
+    // Banners and a scoreboard on the far wall
+    const bannerMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.7, side: THREE.DoubleSide });
+    for (const x of [-12, -7.5, 7.5, 12]) {
+      const b = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.6), bannerMat);
+      b.position.set(x, 6.2, ZB + 0.05); g.add(b);
+      const tri = new THREE.Mesh(new THREE.CircleGeometry(0.7, 3), bannerMat);
+      tri.rotation.z = -Math.PI / 2; tri.position.set(x, 4.55, ZB + 0.05); tri.scale.set(1, 1.4, 1); g.add(tri);
+    }
+    const sc = document.createElement('canvas'); sc.width = 256; sc.height = 96;
+    const sx = sc.getContext('2d');
+    sx.fillStyle = '#121316'; sx.fillRect(0, 0, 256, 96);
+    sx.font = '800 44px Geist, Arial Black, sans-serif'; sx.textAlign = 'center'; sx.textBaseline = 'middle';
+    sx.fillStyle = '#FF5A3C'; sx.fillText('42', 60, 52); sx.fillText('38', 196, 52);
+    sx.fillStyle = '#FFD25A'; sx.font = '700 22px Geist, Arial, sans-serif'; sx.fillText('4TH', 128, 52);
+    const st = new THREE.CanvasTexture(sc); st.colorSpace = THREE.SRGBColorSpace;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.6), new THREE.MeshBasicMaterial({ map: st }));
+    board.position.set(0, 7.3, ZB + 0.06); g.add(board);
     this.scene.add(g);
   }
 
@@ -668,7 +759,7 @@ export class CourtScene {
     }
     this.floor.material.roughness = look.floor === 'blacktop' ? 0.95 : 0.55;
     const park = look.scene === 'park', garden = look.scene === 'garden', beach = look.scene === 'beach';
-    const bg = look.scene === 'arena' || garden ? '#0D0E12' : park ? '#BFD6EA' : beach ? '#E58A6E' : '#E9E3D9';
+    const bg = look.scene === 'arena' || garden ? '#0D0E12' : park ? '#BFD6EA' : beach ? '#E58A6E' : look.scene === 'gym' ? '#D6CFC2' : '#E9E3D9';
     this.scene.background.set(bg);
     this.scene.fog.color.set(park ? '#C9D8E4' : beach ? '#F0A07E' : bg);
     this.scene.fog.near = park ? 45 : garden ? 60 : beach ? 70 : 30;
@@ -682,7 +773,7 @@ export class CourtScene {
     // Beach: a low sun out over the water, behind the basket, so shadows stretch toward the camera.
     if (beach) this.key.position.set(-6, 4.2, -17); else this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
     this.host.parentElement.classList.toggle('arena', look.scene === 'arena' || garden);
-    this.setSurroundings(look.scene);
+    this.setSurroundings(look.scene, look.gymTeam);
   }
 
   // Rebuild players when the roster or a look changes.

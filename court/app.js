@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114b';
-import { QUIZ } from './quiz.js?v=20261114b';
+import { CourtScene, W } from './scene.js?v=20261114d';
+import { QUIZ } from './quiz.js?v=20261114d';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114b';
+import { PRESETS } from './plays.js?v=20261114d';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114b';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114b';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114b';
+} from './model.js?v=20261114d';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114d';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114d';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -198,7 +198,7 @@ function shuffleLook() {
   const O = Math.random() < 0.7 ? pick(cities) : pick(ids);
   let D = pick(ids);
   while (D === O || (TEAMS[D].city && TEAMS[D].city === TEAMS[O].city)) D = pick(ids);
-  const scene = pick(['studio', 'studio', 'arena', 'park', 'garden', 'beach']);
+  const scene = pick(['gym', 'gym', 'studio', 'arena', 'park', 'garden', 'beach']);
   const court = { scene };
   const homeSide = TEAMS[O].city && Math.random() < 0.7 ? 'O' : TEAMS[D].city ? 'D' : null;
   if (homeSide) court.home = homeSide;
@@ -209,7 +209,7 @@ function shuffleLook() {
   if (scene !== 'park' && Math.random() < 0.15) court.lines = '#F2B705';
   lookChange(() => { play.teams = { O, D }; play.court = court; });
   refreshPop();
-  toast(`${TEAMS[O].name} vs ${TEAMS[D].name.toLowerCase()} · ${{ studio: 'studio', arena: 'dark arena', park: 'NYC park', garden: 'NYC arena', beach: 'Hawaii beach' }[scene]}`, { label: 'Undo', run: undo });
+  toast(`${TEAMS[O].name} vs ${TEAMS[D].name.toLowerCase()} · ${{ gym: 'gym', studio: 'studio', arena: 'dark arena', park: 'NYC park', garden: 'NYC arena', beach: 'Hawaii beach' }[scene]}`, { label: 'Undo', run: undo });
 }
 
 function teamControls() {
@@ -236,7 +236,7 @@ function courtControls() {
     <span class="sub">Lines</span><div class="swatches">${Object.entries(LINE_COLORS).map(([x, n]) => sw('data-court="lines"', x, x, n + ' lines', L.lines === x)).join('')}</div>
     <span class="sub">Border</span><div class="swatches">${opt('Match paint', 'data-court="border" data-v=""', !c.border)}${BORDERS.map((x) => sw('data-court="border"', x, x, 'Border ' + x, c.border === x)).join('')}</div>
     <label class="sub" for="court-label">Baseline text</label><input id="court-label" type="text" maxlength="28" placeholder="e.g. Tigers" value="${esc(c.label || '')}" data-court-label />
-    <span class="sub">Around the court</span><div class="opts">${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}${opt('NYC park', 'data-court="scene" data-v="park"', L.scene === 'park')}${opt('NYC arena', 'data-court="scene" data-v="garden"', L.scene === 'garden')}${opt('Hawaii beach', 'data-court="scene" data-v="beach"', L.scene === 'beach')}</div>
+    <span class="sub">Around the court</span><div class="opts">${opt('Gym', 'data-court="scene" data-v="gym"', L.scene === 'gym')}${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}${opt('NYC park', 'data-court="scene" data-v="park"', L.scene === 'park')}${opt('NYC arena', 'data-court="scene" data-v="garden"', L.scene === 'garden')}${opt('Hawaii beach', 'data-court="scene" data-v="beach"', L.scene === 'beach')}</div>
   </div>`;
 }
 
