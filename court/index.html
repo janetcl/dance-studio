@@ -17,11 +17,22 @@
   <link rel="icon" href="../assets/icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261114r" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <link rel="stylesheet" href="court.css?v=20261114s" />
   <script type="importmap">
-    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
+    { "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
+  <link rel="modulepreload" href="../vendor/three.module.min.js" />
+  <link rel="modulepreload" href="app.js?v=20261114s" />
+  <link rel="modulepreload" href="scene.js?v=20261114s" />
+  <link rel="modulepreload" href="model.js?v=20261114s" />
+  <link rel="modulepreload" href="players.js?v=20261114s" />
+  <link rel="modulepreload" href="../js/people.js?v=20261114s" />
+  <link rel="modulepreload" href="../vendor/OrbitControls.js" />
+  <link rel="modulepreload" href="plays.js?v=20261114s" />
+  <link rel="modulepreload" href="quiz.js?v=20261114s" />
+  <link rel="modulepreload" href="recorder.js?v=20261114s" />
+  <link rel="modulepreload" href="../js/icons.js?v=20261114s" />
 </head>
 <body>
   <div class="app" id="app">
@@ -69,6 +80,7 @@
 
     <main class="stage-wrap" id="stage-wrap">
       <div class="stage" id="stage"></div>
+      <div class="stage-loading" id="stage-loading" aria-live="polite"><span class="ld-ball"></span>Setting up the court…</div>
       <div class="labels" id="labels"></div>
       <div class="caption" id="caption" hidden><b id="cap-title"></b><span id="cap-text"></span></div>
       <div class="stage-toolbar">
@@ -302,6 +314,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261114r"></script>
+  <script type="module" src="app.js?v=20261114s"></script>
 </body>
 </html>
