@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261113y';
-import { QUIZ } from './quiz.js?v=20261113y';
+import { CourtScene, W } from './scene.js?v=20261113z';
+import { QUIZ } from './quiz.js?v=20261113z';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261113y';
+import { PRESETS } from './plays.js?v=20261113z';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113y';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113y';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113y';
+} from './model.js?v=20261113z';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113z';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113z';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -426,11 +426,15 @@ function quizTick(f, dt) {
   const uv = f.pos[q.scene.you], me = scene.people.get(q.scene.you);
   if (!uv || !me) return;
   const p = W(uv[0], uv[1]), h = me.look.height || 1, a = me.heading;
-  const eye = new THREE.Vector3(p.x + Math.sin(a) * 0.16, 1.66 * h, p.z + Math.cos(a) * 0.16);
-  const ball = scene.ball.position, rim = W(250, 52.5, 3.05);
-  const want = new THREE.Vector3().lerpVectors(ball, rim, 0.3);
-  want.y = Math.min(want.y, eye.y - 0.25);
-  if (!q.look || ui.snap) q.look = want.clone(); else q.look.lerp(want, Math.min(1, dt * 3.5));
+  // Steady camera: fixed eye height, a level aim (it follows where the ball is, not its bounce),
+  // and smoothed movement so walking and turning don't bob the view.
+  const eyeWant = new THREE.Vector3(p.x + Math.sin(a) * 0.16, 1.62 * h, p.z + Math.cos(a) * 0.16);
+  const ball = scene.ball.position, rim = W(250, 52.5, 0);
+  const want = new THREE.Vector3(ball.x + (rim.x - ball.x) * 0.3, 1.15, ball.z + (rim.z - ball.z) * 0.3);
+  if (!q.look || !q.eye || ui.snap) { q.look = want.clone(); q.eye = eyeWant.clone(); }
+  else { q.look.lerp(want, Math.min(1, dt * 1.8)); q.eye.lerp(eyeWant, Math.min(1, dt * 5)); }
+  q.eye.y = 1.62 * h;
+  const eye = q.eye;
   scene.camera.position.copy(eye);
   scene.controls.target.copy(q.look);
   scene.camera.lookAt(q.look);
