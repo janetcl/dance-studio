@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261115o';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115o';
+import { Player } from './players.js?v=20261115q';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115q';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -193,8 +193,9 @@ export const VIEWS = {
   baseline: { pos: [0, 12.6, -24.5], target: [0, 0.2, 2.0] },
   // Straight down over the half court, pulled back so the basket and the half-court line both fit.
   top: { pos: [0, 27, -2.0], target: [0, 0, -2.2] },
-  // Player height from behind the arc, looking up at the rim: shows what's around the court.
-  courtside: { pos: [-3.4, 1.85, 14.5], target: [0.6, 4.4, -8], fit: false },
+  // A good seat: centered behind the half-court line, a little above the floor, so the whole half court
+  // shows with the scene (skyline, stands) rising behind the basket.
+  courtside: { pos: [-1.2, 4.4, 19.5], target: [0, 2.0, -6], fit: false },
 };
 
 // What every shot must keep in frame: corner and wing spots on the three-point line (feet to
@@ -603,18 +604,19 @@ export class CourtScene {
     const S = 1024 / 90; // canvas px per metre; deck spans 90 m
     const P = (mx, mz) => [(mx + 45) * S, (mz + 45 - 23) * S]; // deck runs z −22 … 68
     dx.strokeStyle = '#E2C04E'; dx.lineWidth = 0.06 * S;
-    // A neighbouring court to the right (x +) and one beyond the baseline to the left.
-    for (const [ox, oz, rot] of [[19, -5.6, 0], [-19, -5.6, 0], [19, 22, Math.PI], [-19, 22, Math.PI]]) {
-      dx.save(); const [px, pz] = P(ox, oz); dx.translate(px, pz); dx.rotate(rot);
-      dx.fillStyle = 'rgba(232,214,150,.85)'; dx.fillRect(-2.44 * S, -1.2 * S, 4.88 * S, 5.8 * S);
-      dx.beginPath(); dx.arc(0, 4.6 * S, 1.83 * S, 0, Math.PI * 2); dx.stroke();
-      dx.beginPath(); dx.moveTo(-6.7 * S, -1.2 * S); dx.lineTo(-6.7 * S, 1.4 * S); dx.arc(0, 0, 6.75 * S, Math.PI - 0.2, 0.2, true); dx.lineTo(6.7 * S, -1.2 * S); dx.stroke();
-      dx.strokeRect(-7.6 * S, -1.2 * S, 15.2 * S, 14.3 * S);
-      dx.restore();
-    }
     const dt = new THREE.CanvasTexture(dc); dt.colorSpace = THREE.SRGBColorSpace; dt.anisotropy = 8;
     const deck = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), new THREE.MeshStandardMaterial({ map: dt, roughness: 0.95 }));
     deck.rotation.x = -Math.PI / 2; deck.position.set(0, -0.012, 23); deck.receiveShadow = true; g.add(deck);
+    // Courts either side: the same floor and hoop as the main court, on the same baseline, so every
+    // line runs straight across. A 3 m gap between sidelines.
+    const sideX = 500 * F + 3.0; // 15.24 m court width + a 3 m gap
+    if (this.floor) {
+      const u0 = -12, uw = 524, v0 = -10, vh = 480;
+      const geo = new THREE.PlaneGeometry(uw * F, vh * F), uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) { uv.setX(i, (u0 + 70) / 640 + uv.getX(i) * (uw / 640)); uv.setY(i, (1 - (v0 + vh + 110) / 640) + uv.getY(i) * (vh / 640)); }
+      for (const sx of [-sideX, sideX]) { const m = new THREE.Mesh(geo, this.floor.material); m.rotation.x = -Math.PI / 2; m.position.set(sx, -0.002, (v0 + vh / 2 - 235) * F); m.receiveShadow = true; g.add(m); }
+    }
+    if (this.hoopGroup) for (const sx of [-sideX, sideX]) { const h = this.hoopGroup.clone(); h.position.x = sx; g.add(h); }
     // Concrete pier edge and a railing on the river sides (behind the basket and to the left).
     const conc = new THREE.MeshStandardMaterial({ color: '#B9B6AE', roughness: 0.9 });
     const rail = new THREE.MeshStandardMaterial({ color: '#8E969C', metalness: 0.7, roughness: 0.4 });
@@ -757,24 +759,13 @@ export class CourtScene {
         for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 0.08), metal); arm.position.set(s * 0.7, 10.8, 0); arm.rotation.z = s * -0.3; m.add(arm);
           const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.5), lamp); head.position.set(s * 1.4, 11.1, 0.2); head.rotation.x = 0.5; m.add(head); }
         m.position.set(x, 0, z); m.rotation.y = face; g.add(m); };
-      for (const [x, z] of [[-11.5, -9], [-11.5, 4], [-11.5, 16], [11.5, -9], [11.5, 16], [-30, -9], [-30, 16], [-40, -18], [-40, 30]]) mast(x, z, Math.atan2(-x, -z)); }
-    // Neighbouring hoops (goosenecks) on the next courts.
-    { const metal = new THREE.MeshStandardMaterial({ color: '#B9C0C6', metalness: 0.85, roughness: 0.32 }), padM = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.8 });
-      const board = new THREE.MeshStandardMaterial({ color: '#F4F6F8', transparent: true, opacity: 0.55, roughness: 0.1 }), rim = new THREE.MeshStandardMaterial({ color: '#D9481C', metalness: 0.4, roughness: 0.4 });
-      const hoop = (x, z, rotY) => { const h = new THREE.Group();
-        const c = new THREE.CubicBezierCurve3(new THREE.Vector3(0, 0, -2.0), new THREE.Vector3(0, 3.6, -2.0), new THREE.Vector3(0, 3.55, -0.45), new THREE.Vector3(0, 3.3, -0.04));
-        h.add(new THREE.Mesh(new THREE.TubeGeometry(c, 32, 0.085, 10), metal));
-        const pd = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 1.9, 14), padM); pd.position.set(0, 0.95, -2.0); h.add(pd);
-        const b = new THREE.Mesh(new THREE.BoxGeometry(1.83, 1.07, 0.03), board); b.position.set(0, 3.4, 0); h.add(b);
-        const r = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.02, 8, 24), rim); r.rotation.x = Math.PI / 2; r.position.set(0, 3.05, 0.38); h.add(r);
-        h.position.set(x, 0, z); h.rotation.y = rotY; g.add(h); };
-      hoop(19, -5.6 - 1.2, 0); hoop(-19, -5.6 - 1.2, 0); hoop(19, 22 + 1.2, Math.PI); hoop(-19, 22 + 1.2, Math.PI); }
+      for (const [x, z] of [[-9.9, -9.5], [-9.9, 9], [9.9, -9.5], [9.9, 9], [-26.6, -9.5], [-26.6, 9], [26.6, -9.5], [26.6, 9]]) mast(x, z, Math.atan2(-x, -z)); }
     // A few benches along the left side.
     { const wood = new THREE.MeshStandardMaterial({ color: '#8A7A66', roughness: 0.9 }), leg = new THREE.MeshStandardMaterial({ color: '#4A4F55', metalness: 0.6, roughness: 0.4 });
-      for (const z of [-2, 6, 14]) { const b = new THREE.Group(); const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 2.2), wood); seat.position.y = 0.45; b.add(seat);
+      for (const z of [-3, 3]) { const b = new THREE.Group(); const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 2.2), wood); seat.position.y = 0.45; b.add(seat);
         const back = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 2.2), wood); back.position.set(-0.24, 0.72, 0); b.add(back);
         for (const dz of [-0.9, 0.9]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.06), leg); l.position.set(0, 0.22, dz); b.add(l); }
-        b.position.set(-12.6, 0, z); b.castShadow = true; g.add(b); } }
+        b.position.set(-9.1, 0, z); b.castShadow = true; g.add(b); } }
     this.scene.add(g);
   }
 
@@ -1360,6 +1351,25 @@ export class CourtScene {
       else if (x.side === 'D') x.pos.lerp(target, Math.min(1, dt * 4));
       else x.pos.copy(target);
       x.setSelected(id === selected);
+    }
+    // Nobody shares a spot: push overlapping players apart. Defenders give way to offense,
+    // teammates split the difference, and the player being dragged stays put.
+    {
+      const vis = [...people.entries()].filter(([, x]) => x.root.visible);
+      const MIN = 0.62;
+      for (let it = 0; it < 3; it++) {
+        for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
+          const [ia, a] = vis[i], [ib, b] = vis[j];
+          let dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z, d = Math.hypot(dx, dz);
+          if (d >= MIN) continue;
+          if (d < 1e-4) { dx = 1; dz = 0; d = 1; } else { dx /= d; dz /= d; }
+          const push = MIN - (d < 1e-4 ? 0 : d);
+          let wa = a.side === b.side ? 0.5 : a.side === 'D' ? 0.85 : 0.15;
+          if (ia === selected) wa = 0; else if (ib === selected) wa = 1;
+          a.pos.x -= dx * push * wa; a.pos.z -= dz * push * wa;
+          b.pos.x += dx * push * (1 - wa); b.pos.z += dz * push * (1 - wa);
+        }
+      }
     }
     // Ball
     const ballOut = this.ball.position;

@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261115o';
-import { QUIZ } from './quiz.js?v=20261115o';
+import { CourtScene, W } from './scene.js?v=20261115q';
+import { QUIZ } from './quiz.js?v=20261115q';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261115o';
+import { PRESETS } from './plays.js?v=20261115q';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261115o';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115o';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261115o';
+} from './model.js?v=20261115q';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115q';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115q';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1264,7 +1264,8 @@ function togglePop() {
 function refreshPop() { if (!$('colors-pop').hidden) $('colors-pop').innerHTML = teamControls(); if (!$('court-pop').hidden) openCourtPop(); }
 function closePops() { $('colors-pop').hidden = true; $('court-pop').hidden = true; }
 function openCourtPop() { $('colors-pop').hidden = true; const pop = $('court-pop'); pop.innerHTML = courtControls(); pop.hidden = false; }
-document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.pop-wrap')) closePops(); });
+// Capture phase on window, so a tap on the court (which may grab a player and stop the event) still closes menus.
+addEventListener('pointerdown', (e) => { if (!e.target.closest || !e.target.closest('.pop-wrap')) closePops(); if (!e.target.closest || (!e.target.closest('#more-menu') && !e.target.closest('.more-btn'))) { const m = $('more-menu'); if (m && !m.hidden) m.hidden = true; } }, true);
 
 // ---------- Playbook, new play, share ----------
 function clonePreset(id) {
