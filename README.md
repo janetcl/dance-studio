@@ -29,3 +29,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
 three.js r170 loads from jsDelivr; its OrbitControls addon is vendored in `vendor/`.
+
+## Court Mode (preview)
+
+`court/` plays a basketball play beat by beat on a 3D half court: offense numbered 1–5, defense X1–X5 guarding man to man, a ball that's dribbled, passed and shot, and arrows for each beat (cut, pass, screen). Pick team colors, switch cameras, and click a beat to jump to it. It reuses the Dance Studio figures (`js/people.js`) with jerseys, shorts and per-player looks. Plays live in `court/plays.js`.
