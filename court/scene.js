@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js';
-import { THEMES, FLOORS, RIM as RIM_UV } from './model.js';
+import { Player } from './players.js?v=20261113b';
+import { THEMES, FLOORS, RIM as RIM_UV } from './model.js?v=20261113b';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -18,7 +18,7 @@ function courtTexture(look) {
   const g = c.getContext('2d');
   const X = (u) => (u - U0) * S, Y = (v) => (v - V0) * S;
   const fl = FLOORS[look.floor] || FLOORS.maple;
-  g.fillStyle = look.scene === 'arena' ? '#121316' : '#2B2A28';
+  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'park' ? '#8E8C86' : '#2B2A28';
   g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = look.border;
   g.fillRect(X(-30), Y(-60), 560 * S, 560 * S);
@@ -170,7 +170,7 @@ export class CourtScene {
     this.labels = labels;
     this.hooks = hooks;
     this.people = new Map();
-    this.theme = 'rb';
+    this.theme = 'bw';
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }));
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.shadowMap.enabled = true;
@@ -223,8 +223,8 @@ export class CourtScene {
     this.handleGeo = new THREE.SphereGeometry(0.11, 16, 12);
     this.addGeo = new THREE.TorusGeometry(0.1, 0.03, 8, 20);
 
-    this.setTheme('rb');
-    this.setCourt({ floor: 'maple', paint: THEMES.rb.paint, lines: '#FFFFFF', border: THEMES.rb.paint, label: '', scene: 'studio' });
+    this.setTheme('bw');
+    this.setCourt({ floor: 'maple', paint: THEMES.bw.paint, lines: '#FFFFFF', border: THEMES.bw.paint, label: '', scene: 'studio' });
     this.setView('broadcast');
     this.bindPointer();
     new ResizeObserver(() => this.resize()).observe(host);
@@ -232,32 +232,215 @@ export class CourtScene {
   }
 
   buildHoop() {
-    const white = new THREE.MeshStandardMaterial({ color: '#FFFFFF', roughness: 0.3, transparent: true, opacity: 0.88 });
-    const dark = new THREE.MeshStandardMaterial({ color: '#2A2724', roughness: 0.5 });
-    const orange = new THREE.MeshStandardMaterial({ color: '#E2531B', roughness: 0.4, metalness: 0.2 });
+    const scene = this.scene;
+    // Soft studio reflections so the glass and metal read as glass and metal.
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    const env = new THREE.Scene();
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(20, 32, 16), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
+    const cols = [];
+    const posAttr = sky.geometry.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const y = posAttr.getY(i) / 20;
+      const c = new THREE.Color().setHSL(0.08, 0.15, 0.55 + y * 0.4);
+      cols.push(c.r, c.g, c.b);
+    }
+    sky.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    env.add(sky);
+    for (const [x, y, z] of [[-6, 8, 4], [6, 8, -4], [0, 10, 8]]) {
+      const panel = new THREE.Mesh(new THREE.PlaneGeometry(6, 2), new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }));
+      panel.position.set(x, y, z); panel.lookAt(0, 0, 0);
+      env.add(panel);
+    }
+    scene.environment = pm.fromScene(env, 0.04).texture;
+    scene.environmentIntensity = 0.55;
+
     const boardZ = W(250, 40).z;
-    const board = new THREE.Mesh(new THREE.BoxGeometry(1.83, 1.07, 0.04), white);
-    board.position.set(0, 3.3, boardZ);
-    board.castShadow = true;
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.61, 0.46, 0.045), new THREE.MeshBasicMaterial({ color: '#E2531B', wireframe: true }));
-    box.position.set(0, 3.25, boardZ + 0.001);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.2286, 0.012, 10, 40), orange);
+    const g = (this.hoop = new THREE.Group());
+    const glass = new THREE.MeshPhysicalMaterial({ color: '#E8F4FF', metalness: 0, roughness: 0.03, transmission: 0.94, thickness: 0.025, ior: 1.5, transparent: true, opacity: 1, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.2, side: THREE.DoubleSide });
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.83, 1.07, 0.025), glass);
+    board.position.set(0, 3.33, boardZ);
+    g.add(board);
+    // Painted white border and shooter's square, slightly proud of the glass on both faces.
+    const paint = new THREE.MeshStandardMaterial({ color: '#FFFFFF', roughness: 0.5 });
+    const bar = (w, h, x, y) => { for (const dz of [0.014, -0.014]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.003), paint); m.position.set(x, y, boardZ + dz); g.add(m); } };
+    const bw = 0.05;
+    bar(1.83, bw, 0, 3.33 + 0.535 - bw / 2); bar(1.83, bw, 0, 3.33 - 0.535 + bw / 2);
+    bar(bw, 1.07, -0.915 + bw / 2, 3.33); bar(bw, 1.07, 0.915 - bw / 2, 3.33);
+    const sqY = RIM_Y + 0.15 + 0.23;
+    bar(0.61, 0.05, 0, sqY + 0.205); bar(0.61, 0.05, 0, RIM_Y + 0.175);
+    bar(0.05, 0.46, -0.28, sqY - 0.005); bar(0.05, 0.46, 0.28, sqY - 0.005);
+    // Metal frame and the padded bottom edge.
+    const metal = new THREE.MeshStandardMaterial({ color: '#B9BDC2', metalness: 0.9, roughness: 0.28 });
+    const pad = new THREE.MeshStandardMaterial({ color: '#1D1A17', roughness: 0.8 });
+    const frame = (w, h, x, y) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.045), metal); m.position.set(x, y, boardZ - 0.01); g.add(m); };
+    frame(1.86, 0.025, 0, 3.33 + 0.545); frame(0.025, 1.09, -0.93, 3.33); frame(0.025, 1.09, 0.93, 3.33);
+    const bottomPad = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.07, 0.09), pad);
+    bottomPad.position.set(0, 3.33 - 0.57, boardZ);
+    bottomPad.castShadow = true;
+    g.add(bottomPad);
+    // Rim, bracket and net hooks.
+    const orange = new THREE.MeshStandardMaterial({ color: '#E2531B', metalness: 0.55, roughness: 0.32 });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.2286, 0.0095, 12, 48), orange);
     rim.rotation.x = Math.PI / 2;
     rim.position.copy(RIM);
-    const net = new THREE.Mesh(new THREE.CylinderGeometry(0.2286, 0.15, 0.42, 16, 4, true), new THREE.MeshBasicMaterial({ color: '#FFFFFF', wireframe: true, transparent: true, opacity: 0.8 }));
-    net.position.set(RIM.x, RIM_Y - 0.21, RIM.z);
+    rim.castShadow = true;
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.012, 0.16), orange);
+    bracket.position.set(0, RIM_Y, boardZ + 0.08);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.012), orange);
+    plate.position.set(0, RIM_Y - 0.05, boardZ + 0.018);
+    g.add(rim, bracket, plate);
+    // Net: knotted diamond mesh, 12 loops round, tapering down.
+    const N = 12, ROWS = 7;
+    const node = (r, j) => {
+      const a = ((j + (r % 2) * 0.5) / N) * Math.PI * 2;
+      const q = r / ROWS;
+      const rad = 0.2286 - 0.085 * Math.sin(q * Math.PI * 0.5) + (r === 0 ? 0 : -0.004);
+      return new THREE.Vector3(RIM.x + Math.cos(a) * rad, -q * 0.44, RIM.z + Math.sin(a) * rad);
+    };
+    const segs = [];
+    for (let r = 0; r < ROWS; r++) for (let j = 0; j < N; j++) {
+      const a = node(r, j);
+      segs.push([a, node(r + 1, j)], [a, node(r + 1, r % 2 ? j + 1 : j - 1)]);
+    }
+    const cord = new THREE.CylinderGeometry(0.0042, 0.0042, 1, 5, 1, true);
+    cord.translate(0, 0.5, 0);
+    this.netMat = new THREE.MeshStandardMaterial({ color: '#F6F3EC', roughness: 0.95 });
+    const net = new THREE.InstancedMesh(cord, this.netMat, segs.length);
+    const m4 = new THREE.Matrix4(), up = new THREE.Vector3(0, 1, 0), qn = new THREE.Quaternion(), sc = new THREE.Vector3();
+    segs.forEach(([a, b], k) => {
+      const d = new THREE.Vector3().subVectors(b, a);
+      qn.setFromUnitVectors(up, d.clone().normalize());
+      sc.set(1, d.length(), 1);
+      m4.compose(a.clone().sub(new THREE.Vector3(RIM.x, 0, RIM.z)), qn, sc);
+      net.setMatrixAt(k, m4);
+    });
+    net.castShadow = true;
+    this.net = new THREE.Group();
+    this.net.position.set(RIM.x, RIM_Y, RIM.z);
+    this.net.add(net);
+    this.netKick = 0;
+    g.add(this.net);
+    // Support arm, pole and base pad.
+    const dark = new THREE.MeshStandardMaterial({ color: '#2A2724', roughness: 0.5, metalness: 0.2 });
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.4), dark);
     arm.position.set(0, 3.3, boardZ - 0.72);
     const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.4, 0.22), dark);
     pole.position.set(0, 1.7, boardZ - 1.4);
     pole.castShadow = true;
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.6), dark);
-    pad.position.set(0, 0.25, boardZ - 1.7);
-    this.scene.add(board, box, rim, net, arm, pole, pad);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.6), pad);
+    base.position.set(0, 0.25, boardZ - 1.7);
+    g.add(arm, pole, base);
+    scene.add(g);
+  }
+
+  // What's around the court: nothing (studio / arena) or a New York City park.
+  setSurroundings(type) {
+    if (this.surroundType === type) return;
+    this.surroundType = type;
+    if (this.surround) { this.scene.remove(this.surround); this.surround.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); this.surround = null; }
+    this.netMat.color.set(type === 'park' ? '#A9AEB3' : '#F6F3EC');
+    this.netMat.metalness = type === 'park' ? 0.85 : 0;
+    this.netMat.roughness = type === 'park' ? 0.35 : 0.95;
+    if (type !== 'park') return;
+    const g = (this.surround = new THREE.Group());
+    const rnd = (() => { let x = 7; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
+    // Sky dome
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(160, 32, 16), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false }));
+    const cols = [], pa = sky.geometry.attributes.position;
+    const top = new THREE.Color('#5E9BD6'), hor = new THREE.Color('#DCE8F1');
+    for (let i = 0; i < pa.count; i++) { const y = Math.max(0, pa.getY(i) / 160); const c = hor.clone().lerp(top, Math.pow(y, 0.6)); cols.push(c.r, c.g, c.b); }
+    sky.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    g.add(sky);
+    // Concrete plaza and grass
+    const plaza = new THREE.Mesh(new THREE.PlaneGeometry(34, 34), new THREE.MeshStandardMaterial({ color: '#9C9A93', roughness: 0.95 }));
+    plaza.rotation.x = -Math.PI / 2; plaza.position.set(0, -0.012, -1); plaza.receiveShadow = true;
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(320, 320), new THREE.MeshStandardMaterial({ color: '#6F8A4C', roughness: 1 }));
+    grass.rotation.x = -Math.PI / 2; grass.position.y = -0.02; grass.receiveShadow = true;
+    g.add(plaza, grass);
+    // Chain-link fence on three sides (the camera side stays open).
+    const fc = document.createElement('canvas'); fc.width = fc.height = 64;
+    const fx = fc.getContext('2d'); fx.strokeStyle = 'rgba(190,196,200,1)'; fx.lineWidth = 3;
+    fx.beginPath(); fx.moveTo(0, 0); fx.lineTo(64, 64); fx.moveTo(64, 0); fx.lineTo(0, 64); fx.stroke();
+    const ft = new THREE.CanvasTexture(fc); ft.wrapS = ft.wrapT = THREE.RepeatWrapping; ft.anisotropy = 4;
+    const H = 3.6, X = 10.2, Z0 = -11.3, Z1 = 10;
+    const fenceSide = (len, pos, rotY) => {
+      const t = ft.clone(); t.needsUpdate = true; t.repeat.set(len / 0.35, H / 0.35);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(len, H), new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.5 }));
+      m.position.set(pos[0], H / 2, pos[2]); m.rotation.y = rotY;
+      g.add(m);
+    };
+    fenceSide(2 * X, [0, 0, Z0], 0);
+    fenceSide(Z1 - Z0, [-X, 0, (Z0 + Z1) / 2], Math.PI / 2);
+    fenceSide(Z1 - Z0, [X, 0, (Z0 + Z1) / 2], Math.PI / 2);
+    const postMat = new THREE.MeshStandardMaterial({ color: '#8E959B', metalness: 0.8, roughness: 0.4 });
+    const post = new THREE.CylinderGeometry(0.04, 0.04, H, 8);
+    const addPost = (x, z) => { const m = new THREE.Mesh(post, postMat); m.position.set(x, H / 2, z); m.castShadow = true; g.add(m); };
+    for (let x = -X; x <= X + 0.01; x += X / 3) addPost(x, Z0);
+    for (let z = Z0 + 3.1; z <= Z1 + 0.01; z += (Z1 - Z0) / 6) { addPost(-X, z); addPost(X, z); }
+    // London plane trees outside the fence
+    const trunkMat = new THREE.MeshStandardMaterial({ color: '#7A6A58', roughness: 0.9 });
+    const leafMats = ['#4E7A3A', '#5B8A42', '#46703A'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }));
+    const tree = (x, z, s) => {
+      const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.22 * s, 3.4 * s, 8), trunkMat);
+      tr.position.set(x, 1.7 * s, z); tr.castShadow = true; g.add(tr);
+      for (let k = 0; k < 5; k++) {
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry((1.3 + rnd() * 0.7) * s, 1), leafMats[k % 3]);
+        b.position.set(x + (rnd() - 0.5) * 2 * s, (3.9 + rnd() * 1.4) * s, z + (rnd() - 0.5) * 2 * s);
+        b.castShadow = true; g.add(b);
+      }
+    };
+    for (const [x, z] of [[-14, -14], [-6, -16], [5, -15.5], [14, -13], [-15, -3], [-15.5, 6], [15, -2], [15.5, 7], [-19, 14], [19, 13]]) tree(x, z, 0.9 + rnd() * 0.35);
+    // Skyline: brick and limestone buildings with lit windows, a few water towers.
+    const winTex = (base) => {
+      const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+      const x = c.getContext('2d'); x.fillStyle = base; x.fillRect(0, 0, 64, 128);
+      for (let r = 0; r < 16; r++) for (let q = 0; q < 6; q++) {
+        x.fillStyle = rnd() < 0.18 ? '#F4DFA6' : rnd() < 0.5 ? '#2B3440' : '#3D4855';
+        x.fillRect(4 + q * 10, 4 + r * 8, 6, 5);
+      }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+    };
+    const bases = ['#8C4A36', '#A35D44', '#C9B79A', '#7B6A5C', '#B07A55', '#9AA0A6', '#6E4637'];
+    const towerMat = new THREE.MeshStandardMaterial({ color: '#7A5A3E', roughness: 0.9 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: '#4A3F36', roughness: 0.9 });
+    const building = (x, z, w, d, h) => {
+      const t = winTex(bases[Math.floor(rnd() * bases.length)]);
+      t.repeat.set(Math.max(1, w / 6), Math.max(1, h / 12));
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ map: t, roughness: 0.85 }));
+      m.position.set(x, h / 2, z); g.add(m);
+      if (rnd() < 0.45) {
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 2.2, 14), towerMat);
+        tank.position.set(x + (rnd() - 0.5) * w * 0.5, h + 2.6, z); g.add(tank);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(1.35, 1.1, 14), roofMat);
+        cap.position.set(tank.position.x, h + 4.25, z); g.add(cap);
+        for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.5, 6), roofMat);
+          leg.position.set(tank.position.x + dx, h + 0.75, z + dz); g.add(leg);
+        }
+      }
+    };
+    for (let x = -70; x < 70; x += 9 + rnd() * 6) building(x, -42 - rnd() * 12, 8 + rnd() * 6, 10, 14 + rnd() * 30);
+    for (let z = -36; z < 30; z += 10 + rnd() * 6) { building(-46 - rnd() * 8, z, 10, 9 + rnd() * 5, 12 + rnd() * 24); building(46 + rnd() * 8, z, 10, 9 + rnd() * 5, 12 + rnd() * 24); }
+    for (let x = -50; x < 50; x += 12 + rnd() * 8) building(x, -75 - rnd() * 15, 10 + rnd() * 6, 12, 40 + rnd() * 50);
+    this.scene.add(g);
+  }
+
+  // Net swish: stretches and sways when the ball drops through, then settles.
+  animateNet(dt) {
+    const b = this.ball.position;
+    const inNet = Math.hypot(b.x - RIM.x, b.z - RIM.z) < 0.2 && b.y < RIM_Y && b.y > RIM_Y - 0.5;
+    if (inNet) this.netKick = 1;
+    this.netKick = Math.max(0, this.netKick - dt * 1.6);
+    this.netTime = (this.netTime || 0) + dt;
+    const w = this.netKick;
+    const wob = Math.sin(this.netTime * 18) * w;
+    this.net.scale.set(1 - 0.12 * w, 1 + 0.22 * w, 1 - 0.12 * w);
+    this.net.rotation.x = wob * 0.08;
+    this.net.rotation.z = Math.cos(this.netTime * 15) * w * 0.06;
   }
 
   setTheme(name) {
-    this.theme = THEMES[name] ? name : 'rb';
+    this.theme = THEMES[name] ? name : 'bw';
     const t = THEMES[this.theme];
     for (const p of this.people.values()) p.setKit({ ...t[p.side] });
   }
@@ -275,12 +458,20 @@ export class CourtScene {
       this.scene.add(this.floor);
     }
     this.floor.material.roughness = look.floor === 'blacktop' ? 0.95 : 0.55;
-    const bg = look.scene === 'arena' ? '#16171B' : '#E9E3D9';
+    const park = look.scene === 'park';
+    const bg = look.scene === 'arena' ? '#16171B' : park ? '#BFD6EA' : '#E9E3D9';
     this.scene.background.set(bg);
-    this.scene.fog.color.set(bg);
-    this.hemi.intensity = look.scene === 'arena' ? 0.8 : 1.25;
-    this.key.intensity = look.scene === 'arena' ? 2.6 : 2.1;
+    this.scene.fog.color.set(park ? '#C9D8E4' : bg);
+    this.scene.fog.near = park ? 45 : 30;
+    this.scene.fog.far = park ? 170 : 60;
+    this.hemi.intensity = look.scene === 'arena' ? 0.8 : park ? 1.1 : 1.25;
+    this.hemi.color.set(park ? '#DCEBFF' : '#FFF8EE');
+    this.hemi.groundColor.set(park ? '#6F7A5E' : '#8C7A66');
+    this.key.intensity = look.scene === 'arena' ? 2.6 : park ? 2.6 : 2.1;
+    this.key.color.set(park ? '#FFF1DC' : '#FFFFFF');
+    this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
     this.host.parentElement.classList.toggle('arena', look.scene === 'arena');
+    this.setSurroundings(look.scene);
   }
 
   // Rebuild players when the roster or a look changes.
@@ -404,6 +595,7 @@ export class CourtScene {
       jump = q > 0 && q < 1 ? Math.sin(Math.PI * q) * 0.35 : 0;
     }
     this.ball.rotation.x += dt * 6;
+    this.animateNet(dt);
 
     const ballFlat = new THREE.Vector3(ballOut.x, 0, ballOut.z);
     for (const [id, x] of people) {

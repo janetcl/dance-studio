@@ -14,10 +14,10 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 export const clampUV = ([u, v]) => [Math.round(Math.max(-40, Math.min(540, u))), Math.round(Math.max(-35, Math.min(465, v)))];
 
 export const THEMES = {
+  bw: { name: 'Black vs white', O: { jersey: '#1D1A17', shorts: '#1D1A17', num: '#FFFFFF' }, D: { jersey: '#F4F2EE', shorts: '#F4F2EE', num: '#1D1A17' }, paint: '#5A544C' },
   rb: { name: 'Red vs blue', O: { jersey: '#D62839', shorts: '#A81C2C', num: '#FFFFFF' }, D: { jersey: '#1F4FD1', shorts: '#173C9E', num: '#FFFFFF' }, paint: '#2D4E9C' },
   tp: { name: 'Teal vs purple', O: { jersey: '#0E8C7F', shorts: '#0A6B61', num: '#FFFFFF' }, D: { jersey: '#6A3FC1', shorts: '#51309A', num: '#FFFFFF' }, paint: '#4B3A8C' },
   gg: { name: 'Green vs gold', O: { jersey: '#1E7B3C', shorts: '#165C2D', num: '#F7D046' }, D: { jersey: '#F2B705', shorts: '#C99700', num: '#1D1A17' }, paint: '#1E6B39' },
-  bw: { name: 'Black vs white', O: { jersey: '#1D1A17', shorts: '#1D1A17', num: '#FFFFFF' }, D: { jersey: '#F4F2EE', shorts: '#F4F2EE', num: '#1D1A17' }, paint: '#5A544C' },
   nysa: { name: 'NY vs SA jerseys', O: { jersey: '#F7F7F5', shorts: '#F7F7F5', num: '#006BB6', trim: '#F58426' }, D: { jersey: '#1A1A1A', shorts: '#1A1A1A', num: '#C4CED4', trim: '#1A1A1A' }, paint: '#0A5FA8' },
 };
 
@@ -35,7 +35,7 @@ export const LINE_COLORS = { '#FFFFFF': 'White', '#1D1A17': 'Black', '#F2B705': 
 export const BORDERS = ['#2B2A28', '#1D1A17', '#5A544C', '#B3202E', '#0F6B5E', '#F2B705'];
 export function courtLook(play) {
   const c = play.court || {};
-  const th = THEMES[play.theme] || THEMES.rb;
+  const th = THEMES[play.theme] || THEMES.bw;
   const paint = c.paint === undefined || c.paint === null ? th.paint : c.paint;
   return {
     floor: FLOORS[c.floor] ? c.floor : 'maple',
@@ -43,7 +43,7 @@ export function courtLook(play) {
     lines: c.lines || (c.floor === 'blacktop' ? '#FFFFFF' : '#FFFFFF'),
     border: c.border || paint || '#2B2A28',
     label: c.label || '',
-    scene: c.scene === 'arena' ? 'arena' : 'studio',
+    scene: ['arena', 'park'].includes(c.scene) ? c.scene : 'studio',
   };
 }
 
@@ -130,7 +130,7 @@ export function makePlayers(size) {
   return ps;
 }
 
-export function newPlay({ name = 'New play', size = 5, defense = 'man', theme = 'rb' } = {}) {
+export function newPlay({ name = 'New play', size = 5, defense = 'man', theme = 'bw' } = {}) {
   const players = makePlayers(size);
   const start = {};
   DEFAULT_SPOTS[size].forEach((p, i) => { start['o' + (i + 1)] = p; });
@@ -354,7 +354,7 @@ export function validate(p) {
   p.v = 1;
   p.id = p.id || uid();
   p.size = p.size || p.players.filter((x) => x.side === 'O').length;
-  p.theme = THEMES[p.theme] ? p.theme : 'rb';
+  p.theme = THEMES[p.theme] ? p.theme : 'bw';
   p.defense = ['man', 'zone', 'hand', 'none'].includes(p.defense) ? p.defense : 'man';
   p.zone = ZONES[p.zone] ? p.zone : '2-3';
   p.court = p.court && typeof p.court === 'object' ? p.court : {};
@@ -402,7 +402,7 @@ export async function decodeShare(s) {
 
 // ---------- Top-down thumbnail ----------
 export function thumbSVG(play, i, { w = 120, marks = true } = {}) {
-  const th = THEMES[play.theme] || THEMES.rb;
+  const th = THEMES[play.theme] || THEMES.bw;
   const cl = courtLook(play);
   const h = Math.round(w * 0.86);
   const ends = {};

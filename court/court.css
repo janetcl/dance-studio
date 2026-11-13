@@ -3,7 +3,7 @@
   --line: #E3DDD3; --line-strong: #D2CABD;
   --ink: #1D1A17; --ink-2: #625B53; --ink-3: #857D73;
   --accent: #E0552E; --accent-soft: #FBE7DF; --accent-ink: #8F3215; --focus: #2F6FEB;
-  --o: #D62839; --o-ink: #fff; --d: #1F4FD1; --d-ink: #fff;
+  --o: #1D1A17; --o-ink: #fff; --d: #F4F2EE; --d-ink: #1D1A17;
   --radius: 10px; --radius-sm: 7px;
   --shadow: 0 1px 2px rgba(29, 26, 23, .06), 0 8px 24px rgba(29, 26, 23, .08);
   --font: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;

@@ -1,13 +1,13 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene } from './scene.js';
-import { PRESETS } from './plays.js';
+import { CourtScene } from './scene.js?v=20261113b';
+import { PRESETS } from './plays.js?v=20261113b';
 import {
   THEMES, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js';
-import { icon, hydrateIcons } from '../js/icons.js';
+} from './model.js?v=20261113b';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113b';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -24,6 +24,14 @@ const hist = { undo: [], redo: [] };
 // ---------- History and saving ----------
 function snapshot() { return JSON.stringify(play); }
 function pushUndo(s) { hist.undo.push(s); if (hist.undo.length > 100) hist.undo.shift(); hist.redo = []; }
+// Colors and court looks also work while watching: they restyle what's on screen
+// (and the plays that follow) without saving anything.
+function lookChange(fn) {
+  if (ui.mode !== 'watch') { mutate(fn); return; }
+  fn(play);
+  ui.watchLook = { theme: play.theme, court: clone(play.court || {}) };
+  changed({ save: false });
+}
 function mutate(fn) { if (ui.mode === 'watch') return; pushUndo(snapshot()); fn(play); changed(); }
 let saveTimer;
 function changed({ save = ui.mode === 'edit' } = {}) {
@@ -190,7 +198,7 @@ function courtControls() {
     <span class="sub">Lines</span><div class="swatches">${Object.entries(LINE_COLORS).map(([x, n]) => sw('data-court="lines"', x, x, n + ' lines', L.lines === x)).join('')}</div>
     <span class="sub">Border</span><div class="swatches">${opt('Match paint', 'data-court="border" data-v=""', !c.border)}${BORDERS.map((x) => sw('data-court="border"', x, x, 'Border ' + x, c.border === x)).join('')}</div>
     <label class="sub" for="court-label">Baseline text</label><input id="court-label" type="text" maxlength="28" placeholder="e.g. Tigers" value="${esc(c.label || '')}" data-court-label />
-    <span class="sub">Around the court</span><div class="opts">${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}</div>
+    <span class="sub">Around the court</span><div class="opts">${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}${opt('NYC park', 'data-court="scene" data-v="park"', L.scene === 'park')}</div>
   </div>`;
 }
 
@@ -307,7 +315,8 @@ function showQueueItem(i, { autoplay = true } = {}) {
   ui.qi = (i + q.length) % q.length;
   const item = q[ui.qi];
   play = validate(clone(item.play));
-  if (item.kind === 'preset' && ui.editPlay) { play.theme = ui.editPlay.theme; play.court = clone(ui.editPlay.court || {}); }
+  const look = ui.watchLook || (item.kind === 'preset' && ui.editPlay ? { theme: ui.editPlay.theme || 'bw', court: ui.editPlay.court || {} } : null);
+  if (look) { play.theme = look.theme; play.court = clone(look.court); }
   ui.sel = null; ui.beat = -1; ui.T = 0; ui.snap = true; ui.endHold = 0; ui.upNext = 0;
   $('upnext').hidden = true;
   renderAll();
@@ -482,7 +491,7 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.tl) { ui.tl = t.dataset.tl; renderTimeline(); return; }
   if (t.dataset.court) {
     const k = t.dataset.court, v = t.dataset.v;
-    mutate(() => { play.court = play.court || {}; if (k === 'paint' && v === '__team') delete play.court.paint; else if (k === 'border' && !v) delete play.court.border; else play.court[k] = v; });
+    lookChange(() => { play.court = play.court || {}; if (k === 'paint' && v === '__team') delete play.court.paint; else if (k === 'border' && !v) delete play.court.border; else play.court[k] = v; if (k === 'scene' && v === 'park' && play.court.floor !== 'blacktop') { play.court.floor = 'blacktop'; play.court.lines = play.court.lines || '#FFFFFF'; } });
     if (!$('court-pop').hidden) openCourtPop();
     return;
   }
@@ -521,7 +530,7 @@ document.addEventListener('click', async (e) => {
     case 'zone': mutate(() => { play.zone = t.dataset.v; }); break;
     case 'court-pop': if ($('court-pop').hidden) openCourtPop(); else closePops(); break;
     case 'start-ball': mutate(() => { play.ball = t.dataset.id; }); break;
-    case 'theme': mutate(() => { play.theme = t.dataset.v; }); closePops(); break;
+    case 'theme': lookChange(() => { play.theme = t.dataset.v; }); closePops(); break;
     case 'colors-pop': togglePop(); break;
     case 'playbook': openPlaybook(); break;
     case 'new': if ($('playbook').open) $('playbook').close(); openNew(); break;
@@ -538,7 +547,7 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
-  if (t.dataset.courtLabel !== undefined) { const v = t.value.trim(); mutate(() => { play.court = play.court || {}; if (v) play.court.label = v; else delete play.court.label; }); if (!$('court-pop').hidden) openCourtPop(); return; }
+  if (t.dataset.courtLabel !== undefined) { const v = t.value.trim(); lookChange(() => { play.court = play.court || {}; if (v) play.court.label = v; else delete play.court.label; }); if (!$('court-pop').hidden) openCourtPop(); return; }
   if (t.dataset.act === 'dribble') { mutate(() => { play.beats[ui.beat].dribble = t.checked; }); return; }
   if (t.dataset.field === 'defense') { mutate(() => { play.defense = t.value; }); return; }
   if (t.dataset.field === 'guard') { const id = ui.sel; mutate(() => { playerOf(id).guard = t.value; }); return; }
