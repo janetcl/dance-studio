@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261113k" />
+  <link rel="stylesheet" href="court.css?v=20261113o" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
@@ -82,6 +82,7 @@
             <button class="chip" data-action="court-pop">Court</button>
             <div class="pop court" id="court-pop" hidden></div>
           </div>
+          <button class="chip" data-action="shuffle" title="Random teams, court and surroundings">⟳ Shuffle look</button>
         </div>
       </div>
       <div class="stage-hint" id="hint"></div>
@@ -178,42 +179,54 @@
       <div class="tour__acts"><button class="btn small ghost" data-action="tour-skip" id="tour-skip">Skip</button><button class="btn small primary" data-action="tour-next" id="tour-next">Next</button></div>
     </div>
   </div>
-  <dialog class="modal small" id="export">
+  <dialog class="modal export" id="export" aria-labelledby="export-h">
     <form method="dialog" id="export-form">
-      <div class="modal-head"><h2>Export video</h2><button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
-      <div class="field"><span>Camera</span>
-        <div class="seg sizes" role="radiogroup" aria-label="Camera">
-          <label><input type="radio" name="camera" value="static" checked />Static (this view)</label>
-          <label><input type="radio" name="camera" value="cinematic" />Cinematic</label>
-          <p class="help" id="camera-help">Static keeps the camera exactly where it is now, like a coach's view of the whole play.</p>
-      </div>
-      </div>
-      <div class="field"><span>Format</span>
-        <div class="seg sizes" role="radiogroup" aria-label="Format">
-          <label><input type="radio" name="format" value="landscape" checked />Landscape 16:9</label>
-          <label><input type="radio" name="format" value="square" />Square 1:1</label>
-          <label><input type="radio" name="format" value="vertical" />Reels 9:16</label>
+      <div class="modal-head"><h2 id="export-h">Export video</h2><button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+
+      <fieldset class="choices">
+        <legend>Camera</legend>
+        <div class="choice-grid two">
+          <label class="choice"><input type="radio" name="camera" value="static" checked /><b>Static</b><span>Stays on the view you have now, like a coach watching the whole play.</span></label>
+          <label class="choice"><input type="radio" name="camera" value="cinematic" /><b>Cinematic</b><span>Starts above the court, sweeps down as the play begins, then slowly circles.</span></label>
         </div>
-        <p class="help" id="format-help">Widescreen, for YouTube, laptops and TVs.</p>
-      </div>
-      <div class="field"><span>Quality</span>
-        <div class="seg sizes" role="radiogroup" aria-label="Quality">
+      </fieldset>
+
+      <fieldset class="choices">
+        <legend>Format</legend>
+        <div class="choice-grid three">
+          <label class="choice"><input type="radio" name="format" value="landscape" checked /><span class="ratio-box" aria-hidden="true"><i class="ratio r169"></i></span><b>Landscape</b><span>16:9 · YouTube, laptops</span></label>
+          <label class="choice"><input type="radio" name="format" value="square" /><span class="ratio-box" aria-hidden="true"><i class="ratio r11"></i></span><b>Square</b><span>1:1 · feed posts</span></label>
+          <label class="choice"><input type="radio" name="format" value="vertical" /><span class="ratio-box" aria-hidden="true"><i class="ratio r916"></i></span><b>Reels</b><span>9:16 · Reels, TikTok, Shorts</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="choices">
+        <legend>Quality</legend>
+        <div class="seg quality" role="radiogroup" aria-label="Quality">
           <label><input type="radio" name="quality" value="720" />720p</label>
           <label><input type="radio" name="quality" value="1080" checked />1080p</label>
           <label><input type="radio" name="quality" value="1440" />1440p</label>
           <label><input type="radio" name="quality" value="2160" />4K</label>
         </div>
         <p class="help" id="quality-help">Full HD. Sharp on any screen and a good size to share.</p>
-      </div>
-      <div class="field" id="codec-field" hidden><span>Encoding</span>
-        <div class="seg sizes" role="radiogroup" aria-label="Encoding">
-          <label><input type="radio" name="codec" value="h264" checked />H.264 · plays everywhere</label>
-          <label><input type="radio" name="codec" value="hevc" />H.265 · smaller file</label>
+      </fieldset>
+
+      <fieldset class="choices" id="codec-field" hidden>
+        <legend>Encoding</legend>
+        <div class="choice-grid two">
+          <label class="choice"><input type="radio" name="codec" value="h264" checked /><b>H.264</b><span>Plays everywhere.</span></label>
+          <label class="choice"><input type="radio" name="codec" value="hevc" /><b>H.265</b><span>About half the size. Not every Windows PC or Android phone plays it.</span></label>
         </div>
-        <p class="help" id="codec-help">Plays everywhere: phones, computers, Instagram, iMessage.</p>
-      </div>
-      <label class="row field-check"><input type="checkbox" name="captions" checked /> Beat captions</label>
-      <label class="row field-check"><input type="checkbox" name="numbers" checked /> Player numbers</label>
+      </fieldset>
+
+      <fieldset class="choices">
+        <legend>On screen</legend>
+        <div class="checks">
+          <label><input type="checkbox" name="captions" checked /> Beat captions</label>
+          <label><input type="checkbox" name="numbers" checked /> Player numbers</label>
+        </div>
+      </fieldset>
+
       <p class="note" id="export-note"></p>
       <div class="modal-actions">
         <button class="btn ghost" type="button" data-close>Cancel</button>
@@ -223,6 +236,6 @@
   </dialog>
   <div class="rec-status" id="rec-status" hidden role="status"><span class="rec-dot"></span>Recording <span id="rec-time"></span><button class="btn small" data-action="export-cancel">Cancel</button></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261113k"></script>
+  <script type="module" src="app.js?v=20261113o"></script>
 </body>
 </html>

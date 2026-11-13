@@ -80,6 +80,40 @@ export class Recorder {
   stop() { if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); return this.done; }
   cancel() { if (this.rec && this.rec.state !== 'inactive') { this.rec.onstop = null; this.rec.stop(); } this.rec = null; }
 
+  // Branded corner badge: a little ball mark, the name, and where to find it.
+  badge(g, W, H, vertical) {
+    g.save();
+    g.font = '700 17px Geist, Inter, system-ui, sans-serif';
+    const name = 'Court Mode';
+    g.font = '500 13px Geist, Inter, system-ui, sans-serif';
+    const url = 'janetlee.me/dance-studio/court';
+    const uw = g.measureText(url).width;
+    g.font = '700 17px Geist, Inter, system-ui, sans-serif';
+    const nw = g.measureText(name).width;
+    const bw = 18 + 30 + 10 + Math.max(nw, uw) + 18, bh = 54;
+    // Landscape and square: top right, opposite the title. Vertical: under the title, clear of the Reels top bar.
+    const x = vertical ? (W - bw) / 2 : W - bw - 22, y = vertical ? H * 0.12 + 118 : 22;
+    roundRect(g, x, y, bw, bh, 27);
+    g.fillStyle = 'rgba(15,14,13,.72)'; g.fill();
+    g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke();
+    // Ball mark
+    const cx = x + 18 + 15, cy = y + bh / 2, r = 15;
+    const grd = g.createRadialGradient(cx - 5, cy - 5, 2, cx, cy, r);
+    grd.addColorStop(0, '#F7A15C'); grd.addColorStop(1, '#D6561C');
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = grd; g.fill();
+    g.strokeStyle = 'rgba(40,20,10,.85)'; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(cx - r, cy); g.lineTo(cx + r, cy); g.stroke();
+    g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx, cy + r); g.stroke();
+    g.beginPath(); g.arc(cx - r * 1.05, cy, r * 0.75, -0.95, 0.95); g.stroke();
+    g.beginPath(); g.arc(cx + r * 1.05, cy, r * 0.75, Math.PI - 0.95, Math.PI + 0.95); g.stroke();
+    // Words
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = '#FFFFFF'; g.fillText(name, cx + r + 12, y + 24);
+    g.font = '500 13px Geist, Inter, system-ui, sans-serif';
+    g.fillStyle = '#FFB37A'; g.fillText(url, cx + r + 12, y + 42);
+    g.restore();
+  }
+
   // Called right after the scene renders.
   frame({ caption, beatLabel, kits, elapsed }) {
     const W = this.W, H = this.H, vertical = H > W;
@@ -128,14 +162,10 @@ export class Recorder {
       g.fillStyle = 'rgba(15,14,13,.78)'; g.fill();
       g.fillStyle = '#FFFFFF'; g.fillText(this.opts.title, tx + 24, ty + 62, W - 96);
       g.font = '600 15px Geist, Inter, system-ui, sans-serif';
-      g.fillStyle = '#FFB37A'; g.fillText('COURT MODE', tx + 25, ty + 88);
+      g.fillStyle = '#FFB37A'; g.fillText('A PLAY IN BEATS', tx + 25, ty + 88);
       g.globalAlpha = 1;
     }
-    g.textAlign = 'right'; g.textBaseline = 'alphabetic';
-    g.font = '600 15px Geist, Inter, system-ui, sans-serif';
-    g.fillStyle = 'rgba(255,255,255,.8)';
-    if (vertical) { g.textAlign = 'center'; g.fillText('janetlee.me/dance-studio/court', W / 2, H * 0.12 - 18); }
-    else g.fillText('janetlee.me/dance-studio/court', W - 24, H - 20);
+    this.badge(g, W, H, vertical);
 
     if (this.opts.captions && caption) {
       g.textAlign = 'left'; g.textBaseline = 'alphabetic';

@@ -46,7 +46,7 @@ export function courtLook(play) {
     lines: c.lines || '#FFFFFF',
     border: c.border || (home && home.border) || paint || '#2B2A28',
     label: c.label || (home && home.city) || '',
-    scene: ['arena', 'park', 'garden'].includes(c.scene) ? c.scene : 'studio',
+    scene: ['arena', 'park', 'garden', 'beach'].includes(c.scene) ? c.scene : 'studio',
   };
 }
 

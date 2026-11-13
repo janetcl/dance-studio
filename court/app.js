@@ -1,14 +1,14 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene } from './scene.js?v=20261113k';
-import { PRESETS } from './plays.js?v=20261113k';
+import { CourtScene } from './scene.js?v=20261113o';
+import { PRESETS } from './plays.js?v=20261113o';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113k';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113k';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113k';
+} from './model.js?v=20261113o';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113o';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113o';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -189,6 +189,27 @@ function opt(label, attrs, on, disabled) {
   return `<button class="opt" ${attrs} aria-pressed="${!!on}"${disabled ? ' disabled' : ''}>${label}</button>`;
 }
 
+// One click: new teams, floor, paint, lines and surroundings that go together.
+function shuffleLook() {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const ids = Object.keys(TEAMS), cities = ids.filter((id) => TEAMS[id].city);
+  const O = Math.random() < 0.7 ? pick(cities) : pick(ids);
+  let D = pick(ids);
+  while (D === O || (TEAMS[D].city && TEAMS[D].city === TEAMS[O].city)) D = pick(ids);
+  const scene = pick(['studio', 'studio', 'arena', 'park', 'garden', 'beach']);
+  const court = { scene };
+  const homeSide = TEAMS[O].city && Math.random() < 0.7 ? 'O' : TEAMS[D].city ? 'D' : null;
+  if (homeSide) court.home = homeSide;
+  if (scene === 'park' || scene === 'beach') { court.floor = 'blacktop'; court.lines = '#FFFFFF'; }
+  else if (scene === 'garden') court.floor = 'maple';
+  else court.floor = pick(['maple', 'maple', 'honey', 'walnut', 'gray']);
+  if (!homeSide && scene !== 'park') court.paint = pick(PAINTS);
+  if (scene !== 'park' && Math.random() < 0.15) court.lines = '#F2B705';
+  lookChange(() => { play.teams = { O, D }; play.court = court; });
+  refreshPop();
+  toast(`${TEAMS[O].name} vs ${TEAMS[D].name.toLowerCase()} · ${{ studio: 'studio', arena: 'dark arena', park: 'NYC park', garden: 'NYC arena', beach: 'Hawaii beach' }[scene]}`, { label: 'Undo', run: undo });
+}
+
 function teamControls() {
   const tm = teamsOf(play);
   const c = play.court || {};
@@ -213,7 +234,7 @@ function courtControls() {
     <span class="sub">Lines</span><div class="swatches">${Object.entries(LINE_COLORS).map(([x, n]) => sw('data-court="lines"', x, x, n + ' lines', L.lines === x)).join('')}</div>
     <span class="sub">Border</span><div class="swatches">${opt('Match paint', 'data-court="border" data-v=""', !c.border)}${BORDERS.map((x) => sw('data-court="border"', x, x, 'Border ' + x, c.border === x)).join('')}</div>
     <label class="sub" for="court-label">Baseline text</label><input id="court-label" type="text" maxlength="28" placeholder="e.g. Tigers" value="${esc(c.label || '')}" data-court-label />
-    <span class="sub">Around the court</span><div class="opts">${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}${opt('NYC park', 'data-court="scene" data-v="park"', L.scene === 'park')}${opt('NYC arena', 'data-court="scene" data-v="garden"', L.scene === 'garden')}</div>
+    <span class="sub">Around the court</span><div class="opts">${opt('Light studio', 'data-court="scene" data-v="studio"', L.scene === 'studio')}${opt('Dark arena', 'data-court="scene" data-v="arena"', L.scene === 'arena')}${opt('NYC park', 'data-court="scene" data-v="park"', L.scene === 'park')}${opt('NYC arena', 'data-court="scene" data-v="garden"', L.scene === 'garden')}${opt('Hawaii beach', 'data-court="scene" data-v="beach"', L.scene === 'beach')}</div>
   </div>`;
 }
 
@@ -532,7 +553,7 @@ document.addEventListener('click', async (e) => {
   }
   if (t.dataset.court) {
     const k = t.dataset.court, v = t.dataset.v;
-    lookChange(() => { play.court = play.court || {}; if (k === 'paint' && v === '__team') delete play.court.paint; else if (k === 'border' && !v) delete play.court.border; else play.court[k] = v; if (k === 'scene' && v === 'park' && play.court.floor !== 'blacktop') { play.court.floor = 'blacktop'; play.court.lines = play.court.lines || '#FFFFFF'; } if (k === 'scene' && v === 'garden') { play.court.floor = 'maple'; play.court.paint = '#0B5CAD'; play.court.border = '#0B5CAD'; play.court.lines = '#FFFFFF'; } });
+    lookChange(() => { play.court = play.court || {}; if (k === 'paint' && v === '__team') delete play.court.paint; else if (k === 'border' && !v) delete play.court.border; else play.court[k] = v; if (k === 'scene' && v === 'park' && play.court.floor !== 'blacktop') { play.court.floor = 'blacktop'; play.court.lines = play.court.lines || '#FFFFFF'; } if (k === 'scene' && v === 'beach') { play.court.floor = 'blacktop'; play.court.lines = '#FFFFFF'; if (play.court.paint === undefined && !play.court.home) play.court.paint = '#0F6B5E'; } if (k === 'scene' && v === 'garden') { play.court.floor = 'maple'; play.court.paint = '#0B5CAD'; play.court.border = '#0B5CAD'; play.court.lines = '#FFFFFF'; } });
     if (!$('court-pop').hidden) openCourtPop();
     return;
   }
@@ -568,6 +589,7 @@ document.addEventListener('click', async (e) => {
       if (k === play.beats.length - 1 && b.ball && b.ball.kind === 'pass') { /* passes on the last beat are fine */ }
     }); break;
     case 'when': mutate(() => { const b = play.beats[k].ball; const t0 = { early: 0.08, mid: 0.35, late: 0.6 }[t.dataset.v]; b.t0 = t0; b.t1 = Math.min(0.98, t0 + (b.kind === 'shot' ? 0.45 : 0.32)); }); break;
+    case 'shuffle': shuffleLook(); break;
     case 'swap-teams': lookChange(() => { const t = teamsOf(play).ids; play.teams = { O: t.D, D: t.O }; if (play.court && play.court.home) play.court.home = play.court.home === 'O' ? 'D' : 'O'; }); refreshPop(); break;
     case 'home': lookChange(() => { play.court = play.court || {}; if (t.dataset.v) play.court.home = t.dataset.v; else delete play.court.home; }); refreshPop(); break;
     case 'zone': mutate(() => { play.zone = t.dataset.v; }); break;
@@ -597,22 +619,8 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
-  if (t.name === 'codec') {
-    $('codec-help').textContent = t.value === 'hevc' ? 'About half the file size for the same picture. Plays on iPhone, Mac and Instagram, but not on every Windows PC, Android phone or browser.' : 'Plays everywhere: phones, computers, Instagram, iMessage.';
-    return;
-  }
-  if (t.name === 'format') {
-    $('format-help').textContent = { landscape: 'Widescreen, for YouTube, laptops and TVs.', square: 'Square, for an Instagram or LinkedIn feed post.', vertical: 'Tall 9:16, for Instagram Reels, TikTok and YouTube Shorts. The camera sits higher so the court fills the frame, and the captions stay clear of the app buttons.' }[t.value];
-    return;
-  }
   if (t.name === 'quality') {
     $('quality-help').textContent = { '720': 'Smallest file. Fine for texting or a quick look.', '1080': 'Full HD. Sharp on any screen and a good size to share.', '1440': 'Extra sharp, larger file.', '2160': 'Sharpest, biggest file. Needs a fast computer; on a slow one the video can stutter.' }[t.value];
-    return;
-  }
-  if (t.name === 'camera') {
-    $('camera-help').textContent = t.value === 'cinematic'
-      ? 'Cinematic starts straight above the court, sweeps down to a broadcast angle as the play begins, then slowly circles while it runs.'
-      : "Static keeps the camera exactly where it is now, like a coach's view of the whole play.";
     return;
   }
   if (t.dataset.courtLabel !== undefined) { const v = t.value.trim(); lookChange(() => { play.court = play.court || {}; if (v) play.court.label = v; else delete play.court.label; }); if (!$('court-pop').hidden) openCourtPop(); return; }
@@ -789,6 +797,7 @@ function startExport() {
     scene.camera.lookAt(scene.controls.target);
   }
   $('app').classList.add('recording');
+  $('labels').hidden = true;
   $('rec-status').hidden = false;
   renderAll();
   recorder.start({ mime, title: play.name, captions: opts.captions, numbers: opts.numbers });
@@ -804,6 +813,7 @@ function restoreAfterExport() {
   scene.controls.target.copy(R.saved.target);
   scene.controls.update();
   $('app').classList.remove('recording');
+  $('labels').hidden = false;
   $('rec-status').hidden = true;
   setPlaying(false);
 }
