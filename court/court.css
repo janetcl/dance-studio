@@ -654,3 +654,27 @@ body.ready .stage-loading { opacity: 0; }
   .quiz-card.answered .quiz-acts { bottom: -10px; margin: 0 -12px -10px; padding: 8px 12px 10px; }
 }
 @media (max-width: 600px) { .app.quizzing .radar { bottom: 64px; } }
+
+/* Question maker: three steps */
+.modal.maker { width: 700px; max-width: calc(100vw - 16px); }
+.maker-intro { margin: 2px 0 6px; color: var(--ink-2); font-size: 13px; }
+.maker-step { border-top: 1px solid var(--line); padding: 12px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+.maker-step h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.maker-n { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 12px; align-items: center; justify-content: center; }
+.maker-step select { width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; font: inherit; background: var(--surface); }
+.maker-step .help { margin: 0; font-size: 12px; color: var(--ink-3); }
+.maker-moment { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 14px; align-items: start; }
+.maker-picks { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.maker-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mchip { position: relative; }
+.mchip input { position: absolute; opacity: 0; }
+.mchip span { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; cursor: pointer; }
+.mchip span small { color: var(--ink-3); font-size: 11px; }
+.mchip input:checked + span { background: var(--ink); border-color: var(--ink); color: #fff; }
+.mchip input:checked + span small { color: rgba(255,255,255,.65); }
+.mchip input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.maker-prev { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.maker-prev svg { width: 100%; height: auto; border-radius: 10px; display: block; }
+.maker-prev figcaption { font-size: 12px; color: var(--ink-2); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 600px) { .maker-moment { grid-template-columns: minmax(0, 1fr); } .maker-prev { max-width: 260px; } }

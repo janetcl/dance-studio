@@ -2,7 +2,7 @@
 // onto a 1280×720 canvas with the number tags and beat captions drawn on top, and
 // MediaRecorder turns that canvas into an MP4 (or WebM where MP4 isn't supported).
 import * as THREE from 'three';
-import { fitCamera, fitBox } from './scene.js?v=20261115f';
+import { fitCamera, fitBox } from './scene.js?v=20261115h';
 
 // Overlays are laid out on a 1280×720 grid and scaled to the chosen size.
 const W = 1280, H = 720;

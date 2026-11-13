@@ -1,7 +1,7 @@
 // Basketball players: the Dance Studio mannequin in a sleeveless jersey and shorts,
 // with its own skin tone, hair, height and jersey number.
 import * as THREE from 'three';
-import { Person } from '../js/people.js?v=20261115f';
+import { Person } from '../js/people.js?v=20261115h';
 
 const tailGeo = new THREE.CapsuleGeometry(0.032, 0.17, 6, 10);
 const longGeo = new THREE.CapsuleGeometry(0.1, 0.16, 6, 14);

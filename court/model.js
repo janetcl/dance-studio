@@ -440,7 +440,7 @@ export async function decodeShare(s) {
 }
 
 // ---------- Top-down thumbnail ----------
-export function thumbSVG(play, i, { w = 120, marks = true } = {}) {
+export function thumbSVG(play, i, { w = 120, marks = true, you = null } = {}) {
   const th = teamsOf(play);
   const cl = courtLook(play);
   const h = Math.round(w * 0.86);
@@ -468,7 +468,7 @@ export function thumbSVG(play, i, { w = 120, marks = true } = {}) {
     const ring = p.id === holder ? ' stroke="#E0552E" stroke-width="7"' : ' stroke="#fff" stroke-width="3"';
     return `<circle cx="${u}" cy="${v}" r="${p.side === 'O' ? 17 : 13}" fill="${k.jersey}"${ring}/>` +
       (p.side === 'O' ? `<text x="${u}" y="${v + 7}" text-anchor="middle" font-family="Geist,sans-serif" font-weight="700" font-size="20" fill="${k.num}">${p.num}</text>` : '');
-  }).join('');
+  }).join('') + (you && ends[you] ? `<circle cx="${ends[you][0]}" cy="${ends[you][1]}" r="28" fill="none" stroke="#2F6FEB" stroke-width="6" stroke-dasharray="9 6"/><text x="${ends[you][0]}" y="${ends[you][1] - 36}" text-anchor="middle" font-family="Geist,sans-serif" font-weight="700" font-size="22" fill="#2F6FEB">YOU</text>` : '');
   return `<svg viewBox="-10 -40 520 390" width="${w}" height="${h}" aria-hidden="true">` +
     `<rect x="-10" y="-40" width="520" height="390" fill="${FLOORS[cl.floor].thumb}"/><rect x="-10" y="-40" width="520" height="40" fill="${cl.border}" fill-opacity=".55"/>` +
     `<rect x="170" y="0" width="160" height="190" fill="${cl.paint || 'none'}" fill-opacity=".45" stroke="${cl.lines}" stroke-width="4"/>` +

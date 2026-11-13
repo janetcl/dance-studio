@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261115f';
-import { QUIZ } from './quiz.js?v=20261115f';
+import { CourtScene, W } from './scene.js?v=20261115h';
+import { QUIZ } from './quiz.js?v=20261115h';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261115f';
+import { PRESETS } from './plays.js?v=20261115h';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261115f';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115f';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261115f';
+} from './model.js?v=20261115h';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115h';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115h';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -278,7 +278,7 @@ function renderInspector() {
         h += '</div>';
       }
     }
-    if (p.side === 'O' && k >= 0) h += `<div class="group"><span class="label">Quiz</span><button class="btn small" data-act="make-question">Make a quiz question as #${esc(p.num)} here</button><p class="help">The question freezes this play on beat ${k + 1}. To set up the read, place defenders by hand first (Start card → Defense).</p></div>`;
+    if (p.side === 'O' && k >= 0) h += `<div class="group"><span class="label">Quiz</span><button class="btn small" data-act="make-question">Make a quiz question as #${esc(p.num)} here</button><p class="help">Opens the question maker on this play, as #${esc(p.num)}, frozen on beat ${k + 1}.</p></div>`;
     if (p.side === 'O') h += `<div class="group"><label class="label" for="ppos">Position</label><select id="ppos" data-field="pos">${POSITIONS.map((x) => `<option${x === p.pos ? ' selected' : ''}>${x}</option>`).join('')}</select></div>`;
     h += `<div class="group"><span class="label">Look</span>
       <div class="swatches" role="group" aria-label="Skin tone">${SKINS.map((c) => `<button class="swatch" data-look="skin" data-v="${c}" style="background:${c}" aria-label="Skin tone ${c}" aria-pressed="${p.look.skin === c}"></button>`).join('')}</div>
@@ -394,38 +394,82 @@ function updateRadar(f) {
 }
 
 // ---------- Question maker ----------
+// Question maker: (1) the play, (2) the moment — who you are, which beat, where in it — and (3) the question.
+const maker = { src: null, you: null, beat: 0 };
+function makerSources() {
+  const cur = ui.mode === 'quiz' || ui.mode === 'watch' ? ui.editPlay : play;
+  const mine = libraryIds().map((id) => loadPlay(id)).filter((p) => p && (!cur || p.id !== cur.id));
+  return { cur, mine, presets: PRESETS };
+}
+function makerPlay(v) {
+  const { cur, mine } = makerSources();
+  if (!v || v === 'cur') return cur;
+  if (v.startsWith('mine:')) return mine.find((p) => p.id === v.slice(5)) || cur;
+  if (v.startsWith('preset:')) return PRESETS.find((p) => p.id === v.slice(7)) || cur;
+  return cur;
+}
 function openMaker() {
-  const id = ui.sel, k = ui.beat;
-  const p = playerOf(id);
-  if (!p || k < 0) return;
   const f = $('maker-form');
   f.reset();
-  f.elements.title.value = `${play.name}: #${p.num}`;
-  f.elements.prompt.value = `You’re #${p.num}. `;
-  f.elements.rule.value = '';
-  $('maker-who').textContent = `You’re #${p.num} · ${play.name} · beat ${k + 1}: ${play.beats[k].name}`;
+  const { cur, mine } = makerSources();
+  const opt = (v, label) => `<option value="${esc(v)}">${esc(label)}</option>`;
+  $('maker-play').innerHTML = (cur ? `<optgroup label="Open now">${opt('cur', cur.name)}</optgroup>` : '')
+    + (mine.length ? `<optgroup label="My plays">${mine.map((p) => opt('mine:' + p.id, p.name)).join('')}</optgroup>` : '')
+    + `<optgroup label="Playbook">${PRESETS.map((p) => opt('preset:' + p.id, `${p.name}${p.level ? ' · ' + p.level : ''}`)).join('')}</optgroup>`;
+  // Start from what's selected in the editor, if anything.
+  const fromEditor = ui.mode === 'edit' && ui.sel && playerOf(ui.sel) && playerOf(ui.sel).side === 'O';
+  maker.you = fromEditor ? ui.sel : null;
+  maker.beat = ui.mode === 'edit' && ui.beat >= 0 ? ui.beat : null;
+  makerSetPlay('cur', { keepPicks: true });
   $('qmaker').showModal();
-  f.elements.prompt.focus();
-  f.elements.prompt.setSelectionRange(f.elements.prompt.value.length, f.elements.prompt.value.length);
+  $('maker-play').focus();
 }
-function saveMaker() {
+function makerSetPlay(v, { keepPicks = false } = {}) {
+  const p = validate(clone(makerPlay(v)));
+  maker.src = v;
+  const offense = p.players.filter((x) => x.side === 'O');
+  if (!keepPicks || !offense.some((x) => x.id === maker.you)) maker.you = (offense[0] || p.players[0]).id;
+  if (!keepPicks || maker.beat == null || maker.beat >= p.beats.length) maker.beat = Math.min(p.beats.length - 1, Math.max(0, Math.floor(p.beats.length / 2) - 1));
+  $('maker-play-help').textContent = v === 'cur'
+    ? 'Defenders stand where this play has them. To set up a different read, place them in the editor first.'
+    : 'Plays from the playbook are used as they are. To change who stands where, open the play in the editor, then make the question from there.';
+  $('maker-you').innerHTML = offense.map((x) => `<label class="mchip"><input type="radio" name="you" value="${esc(x.id)}" ${x.id === maker.you ? 'checked' : ''} /><span>#${esc(x.num)}${x.pos ? ` <small>${esc(x.pos)}</small>` : ''}</span></label>`).join('');
+  $('maker-beat').innerHTML = p.beats.map((b, i) => `<label class="mchip"><input type="radio" name="beat" value="${i}" ${i === maker.beat ? 'checked' : ''} /><span>${i + 1} · ${esc(b.name)}</span></label>`).join('');
+  makerPreview();
+}
+function makerPreview() {
+  const p = validate(clone(makerPlay(maker.src)));
+  const me = p.players.find((x) => x.id === maker.you);
+  const b = p.beats[maker.beat];
+  const when = { start: 'start', middle: 'middle', end: 'end' }[$('maker-form').elements.freeze.value] || 'end';
+  $('maker-prev').innerHTML = thumbSVG({ ...p, theme: play.theme, teams: play.teams, court: play.court }, maker.beat, { w: 220, you: maker.you });
+  $('maker-who').innerHTML = `You’re <b>#${esc(me ? me.num : '?')}</b>. The play freezes at the ${when} of beat ${maker.beat + 1}${b ? `: ${esc(b.name)}` : ''}.`;
+  const f = $('maker-form');
+  const pre = `You’re #${me ? me.num : ''}. `;
+  if (!f.elements.prompt.value.trim() || /^You’re #\w*\. $/.test(f.elements.prompt.value)) f.elements.prompt.value = pre;
+  if (!f.elements.title.value.trim() || f.elements.title.dataset.auto === '1') { f.elements.title.value = `${p.name}: #${me ? me.num : ''}`; f.elements.title.dataset.auto = '1'; }
+}
+function saveMaker(tryIt) {
   const f = $('maker-form'), fd = new FormData(f);
   const choices = [0, 1, 2, 3].map((k) => ({ label: String(fd.get('c' + k) || '').trim(), why: String(fd.get('w' + k) || '').trim(), correct: fd.get('correct') === String(k) })).filter((c) => c.label);
   const prompt = String(fd.get('prompt') || '').trim();
-  const err = !prompt ? 'Write the question first.' : choices.length < 2 ? 'Add at least two choices.' : !choices.some((c) => c.correct) ? 'Mark which choice is right.' : '';
+  const err = !prompt || /^You’re #\w*\.$/.test(prompt) ? 'Write the question in step 3.' : choices.length < 2 ? 'Add at least two choices.' : !choices.some((c) => c.correct) ? 'Mark which choice is right (tap its letter).' : '';
   $('maker-err').textContent = err;
   if (err) return;
   const at = { start: 0.12, middle: 0.5, end: 0.92 }[fd.get('freeze')] || 0.92;
-  const data = clone(play);
+  const data = validate(clone(makerPlay(maker.src)));
   delete data.savedAt;
   const q = {
-    id: 'my-' + uid(), mine: true, title: String(fd.get('title') || '').trim() || play.name, you: ui.sel,
-    freeze: [ui.beat, at], prompt, choices: choices.map((c) => ({ label: c.label, why: c.why || (c.correct ? 'This is the right read.' : 'Not the best read here.'), ...(c.correct ? { correct: true } : {}) })),
+    id: 'my-' + uid(), mine: true, title: String(fd.get('title') || '').trim() || data.name, you: maker.you,
+    freeze: [maker.beat, at], prompt, choices: choices.map((c) => ({ label: c.label, why: c.why || (c.correct ? 'This is the right read.' : 'Not the best read here.'), ...(c.correct ? { correct: true } : {}) })),
     rule: String(fd.get('rule') || '').trim() || 'Read the defense, then decide.', playData: data,
   };
   saveMyQuestions([...myQuestions(), q]);
   $('qmaker').close();
-  toast(`Saved “${q.title}” to My questions`, { label: 'Try it', run: () => { enterQuiz(allQ().length - 1); } });
+  const idx = allQ().length - 1;
+  if (tryIt) { if (ui.mode !== 'quiz') enterQuiz(idx); else { closeQuizHome({ resume: false }); startQuiz(idx); } toast(`Saved “${q.title}”. Here it is.`); return; }
+  if (ui.mode === 'quiz' && !$('qhome').hidden) renderQuizHome();
+  toast(`Saved “${q.title}” to My questions`, { label: 'Try it', run: () => { if (ui.mode !== 'quiz') enterQuiz(idx); else { closeQuizHome({ resume: false }); startQuiz(idx); } } });
 }
 const b64u = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (str) => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
@@ -1087,7 +1131,7 @@ document.addEventListener('click', async (e) => {
     case 'colors-pop': togglePop(); break;
     case 'playbook': openPlaybook(); break;
     case 'make-question': openMaker(); break;
-    case 'maker-save': saveMaker(); break;
+    case 'maker-save': saveMaker(!!t.dataset.try); break;
     case 'share-q': { const q = myQuestions().find((x) => x.id === t.dataset.id); if (q) shareQuestion(q); break; }
     case 'del-q': { const list = myQuestions(); const q = list.find((x) => x.id === t.dataset.id); if (!q) break; saveMyQuestions(list.filter((x) => x.id !== q.id)); renderQuizList(); toast(`Deleted “${q.title}”`, { label: 'Undo', run: () => { saveMyQuestions([...myQuestions(), q]); renderQuizList(); } }); break; }
     case 'look-reset': resetLook(); break;
@@ -1140,7 +1184,14 @@ document.addEventListener('change', (e) => {
   if (t.dataset.beatField) { const k = ui.beat; const v = t.value; mutate(() => { play.beats[k][t.dataset.beatField] = v; }); }
 });
 $('qhome').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeQuizHome(); });
-$('maker-form').addEventListener('input', () => { $('maker-err').textContent = ''; });
+$('maker-form').addEventListener('input', (e) => { $('maker-err').textContent = ''; if (e.target.name === 'title') e.target.dataset.auto = '0'; });
+$('maker-form').addEventListener('change', (e) => {
+  const n = e.target.name;
+  if (n === 'playsrc') makerSetPlay(e.target.value);
+  else if (n === 'you') { maker.you = e.target.value; makerPreview(); }
+  else if (n === 'beat') { maker.beat = Number(e.target.value); makerPreview(); }
+  else if (n === 'freeze') makerPreview();
+});
 $('title').addEventListener('change', () => { const v = $('title').value.trim() || 'Untitled play'; mutate(() => { play.name = v; }); });
 $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 
