@@ -36,15 +36,51 @@ export const BORDERS = ['#2B2A28', '#1D1A17', '#5A544C', '#B3202E', '#0F6B5E', '
 export function courtLook(play) {
   const c = play.court || {};
   const th = THEMES[play.theme] || THEMES.bw;
-  const paint = c.paint === undefined || c.paint === null ? th.paint : c.paint;
+  const tm = teamsOf(play);
+  const home = c.home === 'O' || c.home === 'D' ? tm[c.home] : null;
+  const basePaint = home && home.paint ? home.paint : th.paint;
+  const paint = c.paint === undefined || c.paint === null ? basePaint : c.paint;
   return {
-    floor: FLOORS[c.floor] ? c.floor : 'maple',
+    floor: FLOORS[c.floor] ? c.floor : home && home.floor ? home.floor : 'maple',
     paint, // '' = no paint
-    lines: c.lines || (c.floor === 'blacktop' ? '#FFFFFF' : '#FFFFFF'),
-    border: c.border || paint || '#2B2A28',
-    label: c.label || '',
+    lines: c.lines || '#FFFFFF',
+    border: c.border || (home && home.border) || paint || '#2B2A28',
+    label: c.label || (home && home.city) || '',
     scene: ['arena', 'park', 'garden'].includes(c.scene) ? c.scene : 'studio',
   };
+}
+
+// Teams. City teams use that city's colors only: no names, nicknames or logos.
+// paint/border/city brand the court when the team is the home team.
+export const TEAMS = {
+  black: { name: 'Black', jersey: '#1D1A17', shorts: '#1D1A17', num: '#FFFFFF' },
+  white: { name: 'White', jersey: '#F4F2EE', shorts: '#F4F2EE', num: '#1D1A17' },
+  red: { name: 'Red', jersey: '#D62839', shorts: '#A81C2C', num: '#FFFFFF' },
+  blue: { name: 'Blue', jersey: '#1F4FD1', shorts: '#173C9E', num: '#FFFFFF' },
+  teal: { name: 'Teal', jersey: '#0E8C7F', shorts: '#0A6B61', num: '#FFFFFF' },
+  purple: { name: 'Purple', jersey: '#6A3FC1', shorts: '#51309A', num: '#FFFFFF' },
+  green: { name: 'Green', jersey: '#1E7B3C', shorts: '#165C2D', num: '#F7D046' },
+  gold: { name: 'Gold', jersey: '#F2B705', shorts: '#C99700', num: '#1D1A17' },
+  ny: { name: 'New York', city: 'New York', jersey: '#006BB6', shorts: '#006BB6', num: '#FFFFFF', trim: '#F58426', paint: '#006BB6', border: '#F58426' },
+  nyw: { name: 'New York (white)', city: 'New York', jersey: '#F7F7F5', shorts: '#F7F7F5', num: '#006BB6', trim: '#F58426', paint: '#006BB6', border: '#F58426' },
+  bk: { name: 'Brooklyn', city: 'Brooklyn', jersey: '#111111', shorts: '#111111', num: '#FFFFFF', paint: '#2B2B2B', border: '#111111', floor: 'gray' },
+  bos: { name: 'Boston', city: 'Boston', jersey: '#007A33', shorts: '#007A33', num: '#FFFFFF', trim: '#BA9653', paint: '#007A33', border: '#007A33' },
+  la: { name: 'Los Angeles', city: 'Los Angeles', jersey: '#FDB927', shorts: '#FDB927', num: '#552583', trim: '#552583', paint: '#552583', border: '#552583' },
+  bay: { name: 'Bay Area', city: 'Bay Area', jersey: '#1D428A', shorts: '#1D428A', num: '#FFC72C', paint: '#1D428A', border: '#FFC72C' },
+  mia: { name: 'Miami', city: 'Miami', jersey: '#98002E', shorts: '#98002E', num: '#FFFFFF', trim: '#F9A01B', paint: '#98002E', border: '#111111' },
+  chi: { name: 'Chicago', city: 'Chicago', jersey: '#CE1141', shorts: '#CE1141', num: '#FFFFFF', trim: '#111111', paint: '#CE1141', border: '#111111' },
+  sa: { name: 'San Antonio', city: 'San Antonio', jersey: '#1A1A1A', shorts: '#1A1A1A', num: '#C4CED4', paint: '#1A1A1A', border: '#C4CED4' },
+  phx: { name: 'Phoenix', city: 'Phoenix', jersey: '#1D1160', shorts: '#1D1160', num: '#E56020', paint: '#E56020', border: '#1D1160' },
+  den: { name: 'Denver', city: 'Denver', jersey: '#0E2240', shorts: '#0E2240', num: '#FEC524', trim: '#8B2131', paint: '#0E2240', border: '#FEC524' },
+  tor: { name: 'Toronto', city: 'Toronto', jersey: '#CE1141', shorts: '#CE1141', num: '#FFFFFF', trim: '#000000', paint: '#1A1A1A', border: '#CE1141' },
+};
+export const MATCHUPS = {
+  bw: { O: 'black', D: 'white' }, rb: { O: 'red', D: 'blue' }, tp: { O: 'teal', D: 'purple' },
+  gg: { O: 'green', D: 'gold' }, nysa: { O: 'nyw', D: 'sa' },
+};
+export function teamsOf(play) {
+  const t = play.teams && TEAMS[play.teams.O] && TEAMS[play.teams.D] ? play.teams : MATCHUPS[play.theme] || MATCHUPS.bw;
+  return { O: TEAMS[t.O], D: TEAMS[t.D], ids: { O: t.O, D: t.D } };
 }
 
 export const SKINS = ['#F1C9A5', '#E0AC80', '#C68B5E', '#8D5A3B', '#5B3A29'];
@@ -358,6 +394,7 @@ export function validate(p) {
   p.defense = ['man', 'zone', 'hand', 'none'].includes(p.defense) ? p.defense : 'man';
   p.zone = ZONES[p.zone] ? p.zone : '2-3';
   p.court = p.court && typeof p.court === 'object' ? p.court : {};
+  if (p.teams && !(TEAMS[p.teams.O] && TEAMS[p.teams.D])) delete p.teams;
   p.start = p.start || {};
   for (const pl of p.players) {
     pl.look = { ...(LOOKS[pl.side][(Number(pl.num) - 1) % 5] || LOOKS.O[0]), ...(pl.look || {}) };
@@ -402,7 +439,7 @@ export async function decodeShare(s) {
 
 // ---------- Top-down thumbnail ----------
 export function thumbSVG(play, i, { w = 120, marks = true } = {}) {
-  const th = THEMES[play.theme] || THEMES.bw;
+  const th = teamsOf(play);
   const cl = courtLook(play);
   const h = Math.round(w * 0.86);
   const ends = {};

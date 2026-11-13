@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261113c';
-import { THEMES, FLOORS, RIM as RIM_UV } from './model.js?v=20261113c';
+import { Player } from './players.js?v=20261113e';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113e';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -223,7 +223,7 @@ export class CourtScene {
     this.handleGeo = new THREE.SphereGeometry(0.11, 16, 12);
     this.addGeo = new THREE.TorusGeometry(0.1, 0.03, 8, 20);
 
-    this.setTheme('bw');
+    this.setKits({ O: TEAMS.black, D: TEAMS.white });
     this.setCourt({ floor: 'maple', paint: THEMES.bw.paint, lines: '#FFFFFF', border: THEMES.bw.paint, label: '', scene: 'studio' });
     this.setView('broadcast');
     this.bindPointer();
@@ -516,10 +516,12 @@ export class CourtScene {
     this.net.rotation.z = Math.cos(this.netTime * 15) * w * 0.06;
   }
 
-  setTheme(name) {
-    this.theme = THEMES[name] ? name : 'bw';
-    const t = THEMES[this.theme];
-    for (const p of this.people.values()) p.setKit({ ...t[p.side] });
+  setKits(kits) {
+    const key = JSON.stringify([kits.O, kits.D]);
+    if (key === this.kitsKey) return;
+    this.kitsKey = key;
+    this.kits = kits;
+    for (const p of this.people.values()) p.setKit({ ...kits[p.side] });
   }
 
   setCourt(look) {
@@ -561,7 +563,7 @@ export class CourtScene {
     this.rosterKey = key;
     for (const x of this.people.values()) { this.scene.remove(x.root); x.dispose(); x.tag.remove(); }
     this.people.clear();
-    const t = THEMES[this.theme];
+    const t = this.kits || { O: TEAMS.black, D: TEAMS.white };
     for (const p of players) {
       const x = new Player(p.id, { ...p.look, label: p.num, ...t[p.side] });
       x.side = p.side;

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261113c" />
+  <link rel="stylesheet" href="court.css?v=20261113e" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
@@ -29,6 +29,7 @@
         <button class="icon-btn edit-only" data-action="redo" title="Redo (⇧⌘Z)"><i data-icon="redo"></i></button>
         <button class="btn ghost hide-xs edit-only" data-action="flip" title="Mirror the play left ↔ right"><i data-icon="mirror"></i><span class="hide-sm">Flip</span></button>
         <button class="btn ghost hide-xs edit-only" data-action="new" title="New play"><i data-icon="plus"></i><span class="hide-sm">New</span></button>
+        <button class="icon-btn" data-action="tour" title="How it works" aria-label="How it works"><i data-icon="help"></i></button>
         <button class="btn ghost" data-action="playbook"><i data-icon="folder"></i><span class="hide-sm">Playbook</span></button>
         <button class="btn primary" data-action="share"><i data-icon="share"></i><span class="hide-sm">Share</span></button>
       </div>
@@ -64,7 +65,7 @@
           <button class="chip on" data-toggle="defense">Defense</button>
           <button class="chip on" data-toggle="tags">Numbers</button>
           <div class="pop-wrap">
-            <button class="chip" data-action="colors-pop" id="colors-btn">Colors</button>
+            <button class="chip" data-action="colors-pop" id="colors-btn">Teams</button>
             <div class="pop" id="colors-pop" hidden></div>
           </div>
           <div class="pop-wrap">
@@ -158,7 +159,16 @@
     </form>
   </dialog>
 
+  <div class="tour" id="tour" hidden>
+    <div class="tour__ring" id="tour-ring"></div>
+    <div class="tour__card" id="tour-card" role="dialog" aria-modal="false" aria-labelledby="tour-title">
+      <p class="tour__step" id="tour-step"></p>
+      <h2 id="tour-title"></h2>
+      <p id="tour-text"></p>
+      <div class="tour__acts"><button class="btn small ghost" data-action="tour-skip" id="tour-skip">Skip</button><button class="btn small primary" data-action="tour-next" id="tour-next">Next</button></div>
+    </div>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261113c"></script>
+  <script type="module" src="app.js?v=20261113e"></script>
 </body>
 </html>
