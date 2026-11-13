@@ -2,7 +2,7 @@
 // onto a 1280×720 canvas with the number tags and beat captions drawn on top, and
 // MediaRecorder turns that canvas into an MP4 (or WebM where MP4 isn't supported).
 import * as THREE from 'three';
-import { fitCamera, fitBox } from './scene.js?v=20261115r';
+import { fitCamera, fitBox } from './scene.js?v=20261115s';
 
 // Overlays are laid out on a 1280×720 grid and scaled to the chosen size.
 const W = 1280, H = 720;
@@ -101,22 +101,27 @@ export class Recorder {
 
   // Player number tags, projected from the 3D scene into the frame.
   drawNumbers(g, kits, toX, toY) {
+    // Small, light tags that sit just above each head: readable without crowding the play.
     const v = new THREE.Vector3();
-    g.font = '700 20px Geist, Inter, system-ui, sans-serif';
+    const fs = this.W >= 1000 ? 14 : 13, h = fs + 7;
+    g.save();
+    g.font = `700 ${fs}px Geist, Inter, system-ui, sans-serif`;
     g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.globalAlpha = 0.92;
     for (const x of this.scene.people.values()) {
       if (!x.root.visible) continue;
-      v.set(x.root.position.x, 2.05 * (x.look.height || 1) + x.root.position.y, x.root.position.z).project(this.scene.camera);
+      v.set(x.root.position.x, 2.0 * (x.look.height || 1) + x.root.position.y, x.root.position.z).project(this.scene.camera);
       if (v.z > 1) continue;
-      const px = toX(v.x), py = toY(v.y) - 14;
+      const px = toX(v.x), py = toY(v.y) - 8;
       const text = x.tag.textContent;
-      const tw = g.measureText(text).width + 18;
+      const tw = Math.max(h, g.measureText(text).width + 12);
       const kit = kits[x.side];
-      roundRect(g, px - tw / 2, py - 14, tw, 28, 14);
+      roundRect(g, px - tw / 2, py - h / 2, tw, h, h / 2);
       g.fillStyle = kit.jersey; g.fill();
-      g.lineWidth = 2.5; g.strokeStyle = 'rgba(255,255,255,.92)'; g.stroke();
-      g.fillStyle = kit.num; g.fillText(text, px, py + 1);
+      g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.85)'; g.stroke();
+      g.fillStyle = kit.num; g.fillText(text, px, py + 0.5);
     }
+    g.restore();
   }
 
   // 9:16 plays: a square court shot in the middle, the title in the band above, the beat caption
