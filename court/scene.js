@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261114g';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114g';
+import { Player } from './players.js?v=20261114l';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114l';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -86,24 +86,51 @@ function courtTexture(look) {
 }
 
 function ballTexture() {
-  const c = document.createElement('canvas');
-  c.width = 512; c.height = 256;
+  // A real eight-panel basketball, drawn per pixel on the sphere: two great-circle seams that
+  // cross at right angles, two curved seams (small circles around the poles), pebbled leather.
+  const Wd = 1024, Ht = 512;
+  const c = document.createElement('canvas'); c.width = Wd; c.height = Ht;
   const g = c.getContext('2d');
-  g.fillStyle = '#D9631E';
-  g.fillRect(0, 0, 512, 256);
-  for (let i = 0; i < 4000; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`; g.fillRect(Math.random() * 512, Math.random() * 256, 2, 2); }
-  g.strokeStyle = '#1C120C';
-  g.lineWidth = 6;
-  g.beginPath(); g.moveTo(0, 128); g.lineTo(512, 128); g.stroke();
-  for (const x of [128, 384]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 256); g.stroke(); }
-  for (const x0 of [0, 256]) {
-    g.beginPath();
-    for (let x = 0; x <= 256; x += 4) { const y = 128 + Math.sin((x / 256) * Math.PI * 2) * 70; x ? g.lineTo(x0 + x, y) : g.moveTo(x0 + x, y); }
-    g.stroke();
+  const img = g.createImageData(Wd, Ht);
+  const bump = document.createElement('canvas'); bump.width = Wd; bump.height = Ht;
+  const bg = bump.getContext('2d');
+  const bimg = bg.createImageData(Wd, Ht);
+  const seamW = 0.016, curve = 0.72;
+  const hash = (x, y) => { const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); };
+  for (let r = 0; r < Ht; r++) {
+    const th = (r + 0.5) / Ht * Math.PI, st = Math.sin(th), y = Math.cos(th);
+    for (let q = 0; q < Wd; q++) {
+      const ph = (q + 0.5) / Wd * Math.PI * 2;
+      const x = -Math.cos(ph) * st, z = Math.sin(ph) * st;
+      // Distance to the nearest seam on the unit sphere.
+      const d = Math.min(Math.abs(x), Math.abs(z), Math.abs(Math.abs(y) - curve) * 1.2);
+      const seam = Math.max(0, Math.min(1, 1 - (d - seamW) / 0.006));
+      const groove = Math.max(0, Math.min(1, 1 - (d - seamW) / 0.03));
+      // Pebbles: small bumps on a fine grid in angle space, sized to the sphere.
+      const px = q * st * 0.9, py = r * 0.9;
+      const cx = Math.floor(px / 3), cy = Math.floor(py / 3);
+      const fx = px / 3 - cx - 0.5, fy = py / 3 - cy - 0.5;
+      const pebble = Math.max(0, 1 - (fx * fx + fy * fy) * 3.2) * (0.7 + 0.3 * hash(cx, cy));
+      const tone = 0.95 + 0.05 * Math.sin(x * 3.1 + 1.3) * Math.cos(z * 2.7 - y * 1.9);
+      const k = 4 * (r * Wd + q);
+      const R = (205 + pebble * 18) * tone, G = (92 + pebble * 10) * tone, B = (38 + pebble * 4) * tone;
+      const shade = 1 - groove * 0.25;
+      img.data[k] = (R * shade) * (1 - seam) + 26 * seam;
+      img.data[k + 1] = (G * shade) * (1 - seam) + 18 * seam;
+      img.data[k + 2] = (B * shade) * (1 - seam) + 14 * seam;
+      img.data[k + 3] = 255;
+      const bv = Math.max(0, 140 + pebble * 90 - groove * 120);
+      bimg.data[k] = bimg.data[k + 1] = bimg.data[k + 2] = bv; bimg.data[k + 3] = 255;
+    }
   }
+  g.putImageData(img, 0, 0);
+  bg.putImageData(bimg, 0, 0);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  t.anisotropy = 8;
+  const b = new THREE.CanvasTexture(bump);
+  b.anisotropy = 8;
+  return { map: t, bump: b };
 }
 
 const OV = { U0: -40, V0: -60, UW: 580, VH: 540, S: 2 };
@@ -216,7 +243,7 @@ export class CourtScene {
     this.overlay.renderOrder = 1;
     scene.add(this.overlay);
 
-    this.ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 32, 20), new THREE.MeshStandardMaterial({ map: ballTexture(), roughness: 0.7 }));
+    this.ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 48, 32), (() => { const bt = ballTexture(); return new THREE.MeshStandardMaterial({ map: bt.map, bumpMap: bt.bump, bumpScale: 0.6, roughness: 0.78, metalness: 0 }); })());
     this.ball.castShadow = true;
     scene.add(this.ball);
 

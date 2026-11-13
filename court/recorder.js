@@ -43,7 +43,7 @@ function roundRect(g, x, y, w, h, r) {
   g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
 
-function wrap(g, text, maxW) {
+function wrap(g, text, maxW, max = 2) {
   const words = String(text).split(/\s+/), lines = [];
   let line = '';
   for (const w of words) {
@@ -51,7 +51,7 @@ function wrap(g, text, maxW) {
     if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
   }
   if (line) lines.push(line);
-  return lines.slice(0, 2);
+  return lines.slice(0, max);
 }
 
 export class Recorder {
@@ -81,7 +81,7 @@ export class Recorder {
   cancel() { if (this.rec && this.rec.state !== 'inactive') { this.rec.onstop = null; this.rec.stop(); } this.rec = null; }
 
   // Branded corner badge: a little ball mark, the name, and where to find it.
-  badge(g, W, H, vertical) {
+  badge(g, W, H, vertical, yAt) {
     g.save();
     g.font = '700 17px Geist, Inter, system-ui, sans-serif';
     const name = 'Court Mode';
@@ -92,7 +92,7 @@ export class Recorder {
     const nw = g.measureText(name).width;
     const bw = 18 + 30 + 10 + Math.max(nw, uw) + 18, bh = 54;
     // Landscape and square: top right, opposite the title. Vertical: under the title, clear of the Reels top bar.
-    const x = vertical ? (W - bw) / 2 : W - bw - 22, y = vertical ? H * 0.12 + 118 : 22;
+    const x = vertical ? (W - bw) / 2 : W - bw - 22, y = yAt !== undefined ? yAt : vertical ? H * 0.12 + 118 : 22;
     roundRect(g, x, y, bw, bh, 27);
     g.fillStyle = 'rgba(15,14,13,.72)'; g.fill();
     g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke();
@@ -114,8 +114,111 @@ export class Recorder {
     g.restore();
   }
 
+  // Quiz Short overlays: hook, the frozen question with a countdown, the reveal, the read, the rule.
+  quizOverlay(g, W, H, vertical, q) {
+    const font = (w, px) => `${w} ${px}px Geist, Inter, system-ui, sans-serif`;
+    const fade = (t, a = 0.3) => Math.max(0, Math.min(1, t / a));
+    const safeTop = vertical ? H * 0.13 + 40 : 26, safeBottom = vertical ? H * 0.78 : H - 30;
+    const center = (text, y, f, color) => { g.font = f; g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillText(text, W / 2, y); };
+    g.save();
+    if (q.phase === 'hook' || q.phase === 'play') {
+      const a = q.phase === 'hook' ? fade(q.t) : Math.max(0, 1 - q.t / 0.6);
+      if (q.phase === 'hook' || a > 0) {
+        g.globalAlpha = Math.max(a, q.phase === 'play' ? 0 : a);
+        const boxW = Math.min(W - 48, 620), boxH = 150, x = (W - boxW) / 2, y = vertical ? safeTop + 70 : 40;
+        roundRect(g, x, y, boxW, boxH, 20); g.fillStyle = 'rgba(15,14,13,.82)'; g.fill();
+        center(`YOU’RE #${q.you}`, y + 64, font(800, 46), '#FFB37A');
+        center('What would you do?', y + 112, font(600, 28), '#FFFFFF');
+        g.globalAlpha = 1;
+      }
+      if (q.phase === 'play' && q.t > 0.5) {
+        const label = `#${q.you} · watch the play`;
+        g.font = font(600, 20); const tw = g.measureText(label).width + 30;
+        roundRect(g, (W - tw) / 2, vertical ? safeTop + 70 : 26, tw, 38, 19); g.fillStyle = 'rgba(15,14,13,.7)'; g.fill();
+        center(label, (vertical ? safeTop + 70 : 26) + 26, font(600, 20), '#FFFFFF');
+      }
+    }
+    if (q.phase === 'freeze' || q.phase === 'reveal') {
+      g.fillStyle = 'rgba(10,10,12,.38)'; g.fillRect(0, 0, W, H);
+      const boxW = Math.min(W - 40, 820), x = (W - boxW) / 2;
+      g.font = font(700, vertical ? 26 : 24);
+      const lines = wrap(g, q.prompt, boxW - 48, 5);
+      const lineH = vertical ? 34 : 31, pillH = vertical ? 58 : 50, gap = 10;
+      const cols = vertical ? 1 : 2;
+      const rows = Math.ceil(q.choices.length / cols);
+      const boxH = 34 + lines.length * lineH + 18 + rows * (pillH + gap) + (q.phase === 'freeze' ? 70 : 64);
+      const y = vertical ? Math.max(safeTop + 40, (safeBottom - boxH) * 0.62) : Math.max(20, (H - boxH) / 2);
+      roundRect(g, x, y, boxW, boxH, 22); g.fillStyle = 'rgba(255,255,255,.97)'; g.fill();
+      g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      g.font = font(700, 14); g.fillStyle = '#8F3215'; g.fillText(`YOU’RE #${q.you} · ${q.title.toUpperCase()}`, x + 24, y + 30);
+      g.font = font(700, vertical ? 26 : 24); g.fillStyle = '#1D1A17';
+      lines.forEach((l, i) => g.fillText(l, x + 24, y + 30 + 14 + (i + 1) * lineH - 6));
+      const py0 = y + 30 + 14 + lines.length * lineH + 12;
+      const pw = (boxW - 48 - (cols - 1) * gap) / cols;
+      q.choices.forEach((c, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const px = x + 24 + col * (pw + gap), py = py0 + row * (pillH + gap);
+        const isRight = i === q.correct, revealed = q.phase === 'reveal';
+        const k = revealed ? fade(q.t, 0.25) : 0;
+        g.globalAlpha = revealed && !isRight ? 1 - 0.6 * k : 1;
+        roundRect(g, px, py, pw, pillH, 14);
+        g.fillStyle = revealed && isRight ? `rgba(227,241,230,${0.3 + 0.7 * k})` : '#F4F1EB'; g.fill();
+        g.lineWidth = revealed && isRight ? 3 : 1.5; g.strokeStyle = revealed && isRight ? '#2E8B57' : '#E3DDD3'; g.stroke();
+        g.beginPath(); g.arc(px + 28, py + pillH / 2, 15, 0, Math.PI * 2);
+        g.fillStyle = revealed && isRight ? '#2E8B57' : '#1D1A17'; g.fill();
+        g.font = font(800, 15); g.fillStyle = '#FFFFFF'; g.textAlign = 'center';
+        g.fillText(revealed && isRight ? '✓' : 'ABCD'[i], px + 28, py + pillH / 2 + 5);
+        g.textAlign = 'left'; g.font = font(600, vertical ? 21 : 19); g.fillStyle = '#1D1A17';
+        g.fillText(c.length > 40 ? c.slice(0, 38) + '…' : c, px + 54, py + pillH / 2 + 7, pw - 64);
+        g.globalAlpha = 1;
+      });
+      const by = py0 + rows * (pillH + gap) + 10;
+      if (q.phase === 'freeze') {
+        const left = Math.max(0, q.count - q.t);
+        const cx = x + 44, cy = by + 26;
+        g.beginPath(); g.arc(cx, cy, 20, 0, Math.PI * 2); g.lineWidth = 5; g.strokeStyle = '#EFEBE4'; g.stroke();
+        g.beginPath(); g.arc(cx, cy, 20, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / q.count)); g.strokeStyle = '#E0552E'; g.stroke();
+        g.font = font(800, 18); g.fillStyle = '#1D1A17'; g.textAlign = 'center'; g.fillText(String(Math.ceil(left)), cx, cy + 6);
+        g.textAlign = 'left'; g.font = font(700, 20); g.fillStyle = '#1D1A17'; g.fillText('Pause and pick your answer', x + 78, cy + 7);
+      } else {
+        g.font = font(800, 22); g.fillStyle = '#1F6B35'; g.textAlign = 'left';
+        g.fillText(`Answer: ${'ABCD'[q.correct]}. ${q.choices[q.correct]}`, x + 24, by + 34, boxW - 48);
+      }
+    }
+    if (q.phase === 'replay') {
+      const label = 'THE READ';
+      g.font = font(800, 18); const tw = g.measureText(label).width + 30;
+      const ly = vertical ? safeTop + 70 : 26;
+      roundRect(g, (W - tw) / 2, ly, tw, 36, 18); g.fillStyle = '#2E8B57'; g.fill();
+      center(label, ly + 25, font(800, 18), '#FFFFFF');
+      const boxW = Math.min(W - 40, 900);
+      g.font = font(600, vertical ? 23 : 21);
+      const lines = wrap(g, q.why, boxW - 48, 4);
+      const boxH = 30 + lines.length * 30;
+      const y = vertical ? safeBottom - boxH - 10 : H - boxH - 36;
+      roundRect(g, (W - boxW) / 2, y, boxW, boxH, 16); g.fillStyle = 'rgba(15,14,13,.84)'; g.fill();
+      g.textAlign = 'left'; g.fillStyle = '#FFFFFF';
+      lines.forEach((l, i) => g.fillText(l, (W - boxW) / 2 + 24, y + 38 + i * 30));
+    }
+    if (q.phase === 'outro') {
+      g.globalAlpha = fade(q.t, 0.35);
+      g.fillStyle = 'rgba(10,10,12,.62)'; g.fillRect(0, 0, W, H);
+      const boxW = Math.min(W - 48, 760);
+      g.font = font(800, vertical ? 34 : 32);
+      const lines = wrap(g, q.rule, boxW - 60, 3);
+      const boxH = 120 + lines.length * 44;
+      const y = vertical ? H * 0.36 : (H - boxH) / 2;
+      roundRect(g, (W - boxW) / 2, y, boxW, boxH, 22); g.fillStyle = '#FFFFFF'; g.fill();
+      center('REMEMBER', y + 46, font(800, 16), '#8F3215');
+      lines.forEach((l, i) => center(l, y + 96 + i * 44, font(800, vertical ? 34 : 32), '#1D1A17'));
+      center('Take the quiz · janetlee.me/dance-studio/court', y + boxH + 44, font(600, 20), '#FFFFFF');
+      g.globalAlpha = 1;
+    }
+    g.restore();
+  }
+
   // Called right after the scene renders.
-  frame({ caption, beatLabel, kits, elapsed }) {
+  frame({ caption, beatLabel, kits, elapsed, quiz }) {
     const W = this.W, H = this.H, vertical = H > W;
     const g = this.g, src = this.scene.renderer.domElement;
     const sw0 = src.width, sh0 = src.height;
@@ -150,6 +253,8 @@ export class Recorder {
     }
 
     // Title in the first seconds, a small credit at the end corner.
+    // Quiz Shorts: badge first, just inside the safe area, and the quiz cards start below it.
+    if (quiz) { this.badge(g, W, H, vertical, vertical ? H * 0.13 : 22); this.quizOverlay(g, W, H, vertical, quiz); return; }
     if (this.opts.title && elapsed < 3.2) {
       const a = Math.min(1, elapsed / 0.4, (3.2 - elapsed) / 0.5);
       g.globalAlpha = Math.max(0, a);

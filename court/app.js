@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114g';
-import { QUIZ } from './quiz.js?v=20261114g';
+import { CourtScene, W } from './scene.js?v=20261114l';
+import { QUIZ } from './quiz.js?v=20261114l';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114g';
+import { PRESETS } from './plays.js?v=20261114l';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114g';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114g';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114g';
+} from './model.js?v=20261114l';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114l';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114l';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -340,6 +340,24 @@ function renderTimeline() {
   }
 }
 
+// Drag to look around in Your eyes; double-click to look back at the play.
+{
+  let drag = null;
+  addEventListener('pointerdown', (e) => {
+    if (ui.mode !== 'quiz' || !ui.quiz || ui.quiz.cam !== 'pov' || ui.rec || e.button !== 0) return;
+    if (!e.target.closest || !e.target.closest('#stage')) return;
+    drag = { x: e.clientX, y: e.clientY, yaw: ui.quiz.yaw || 0, pitch: ui.quiz.pitch || 0 };
+    e.stopPropagation();
+  }, true);
+  addEventListener('pointermove', (e) => {
+    if (!drag || !ui.quiz) return;
+    ui.quiz.yaw = drag.yaw - (e.clientX - drag.x) * 0.006;
+    ui.quiz.pitch = Math.max(-0.7, Math.min(0.7, drag.pitch + (e.clientY - drag.y) * 0.004));
+  }, true);
+  addEventListener('pointerup', () => { drag = null; }, true);
+  addEventListener('dblclick', (e) => { if (ui.mode === 'quiz' && ui.quiz && ui.quiz.cam === 'pov' && e.target.closest && e.target.closest('#stage')) { ui.quiz.yaw = 0; ui.quiz.pitch = 0; } }, true);
+}
+
 // ---------- Question maker ----------
 function openMaker() {
   const id = ui.sel, k = ui.beat;
@@ -441,11 +459,11 @@ function startQuiz(i) {
   if (look) { play.theme = look.theme; if (look.teams) play.teams = { ...look.teams }; else delete play.teams; play.court = clone(look.court || {}); }
   const { starts } = timing(play);
   const freezeT = starts[sc.freeze[0]] + play.beats[sc.freeze[0]].dur * sc.freeze[1];
-  ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null };
+  ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null, yaw: 0, pitch: 0 };
   ui.sel = sc.you; ui.arrows = false; ui.T = 0; ui.snap = true; ui.endHold = 0;
   ui.speed = 1; $('speed').textContent = '1×';
   const me = play.players.find((p) => p.id === sc.you);
-  $('quiz-banner').innerHTML = `You’re <b>#${esc(me.num)}</b> · watch from their eyes`;
+  $('quiz-banner').innerHTML = `You’re <b>#${esc(me.num)}</b> · watch from their eyes · drag to look around`;
   $('quiz-banner').hidden = false;
   $('quiz-card').hidden = true;
   renderAll();
@@ -481,7 +499,10 @@ function povOn() {
   const c = scene.controls;
   ui.povSaved = ui.povSaved || { min: c.minDistance, maxPolar: c.maxPolarAngle };
   c.enabled = false; c.enableDamping = false; c.minDistance = 0.05; c.maxPolarAngle = Math.PI;
-  scene.camera.fov = 66; scene.camera.updateProjectionMatrix();
+  // About 60° across on any screen shape, so a tall Reel isn't zoomed in.
+  const a = scene.camera.aspect || 1.6;
+  scene.camera.fov = a >= 1.2 ? 66 : Math.min(95, (2 * Math.atan(Math.tan((30 * Math.PI) / 180) / a) * 180) / Math.PI);
+  scene.camera.updateProjectionMatrix();
 }
 function povOff() {
   const c = scene.controls;
@@ -520,9 +541,23 @@ function quizTick(f, dt) {
   else { q.look.lerp(want, Math.min(1, dt * 1.8)); q.eye.lerp(eyeWant, Math.min(1, dt * 5)); }
   q.eye.y = 1.62 * h;
   const eye = q.eye;
+  if (q.yaw || q.pitch) {
+    // Your own look-around (drag in Your eyes), applied on top of the aim at the ball.
+    const dir = new THREE.Vector3().subVectors(q.look, eye);
+    const dist = Math.max(2, dir.length());
+    const sph = new THREE.Spherical().setFromVector3(dir);
+    sph.theta += q.yaw || 0;
+    sph.phi = Math.max(0.35, Math.min(Math.PI - 0.35, sph.phi - (q.pitch || 0)));
+    sph.radius = dist;
+    const aim = new THREE.Vector3().setFromSpherical(sph).add(eye);
+    scene.camera.position.copy(eye);
+    scene.controls.target.copy(aim);
+    scene.camera.lookAt(aim);
+  } else {
   scene.camera.position.copy(eye);
   scene.controls.target.copy(q.look);
   scene.camera.lookAt(q.look);
+  }
   // Anyone right in front of your eyes fades so they don't block the view.
   for (const [id, x] of scene.people) {
     if (id === q.scene.you) { x.setOpacity(0); continue; }
@@ -733,7 +768,8 @@ function frame(nowMs) {
   clockNow += dt;
   const { total } = timing(play);
   if (ui.T > total) ui.T = total;
-  if (ui.rec) {
+  if (ui.rec && ui.rec.quiz) quizRecTick(ui.rec, dt, total);
+  else if (ui.rec) {
     const R = ui.rec;
     R.t += dt;
     if (!R.started && R.t >= R.lead) { R.started = true; ui.T = 0; ui.snap = true; setPlaying(true); }
@@ -779,7 +815,7 @@ function frame(nowMs) {
   if (ui.mode === 'quiz' && ui.quiz && ui.quiz.cam === 'pov') { const me = scene.people.get(ui.quiz.scene.you); if (me) me.tag.style.display = 'none'; }
   if (ui.rec && ui.rec.recorder) {
     const b = ui.rec.started ? play.beats[f.i] : null;
-    ui.rec.recorder.frame({ caption: b ? (b.text || beatSummary(f.i)) : '', beatLabel: b ? `Beat ${f.i + 1} · ${b.name}` : '', kits: teamsOf(play), elapsed: ui.rec.t });
+    ui.rec.recorder.frame({ caption: b ? (b.text || beatSummary(f.i)) : '', beatLabel: b ? `Beat ${f.i + 1} · ${b.name}` : '', kits: teamsOf(play), elapsed: ui.rec.t, quiz: ui.rec.quiz ? quizRecState(ui.rec) : null });
   }
   ui.snap = false;
   $('playhead').style.left = `calc(${(ui.T / total) * 100}% - 1px)`;
@@ -1047,12 +1083,16 @@ async function share() {
 
 // ---------- Export a video ----------
 function openExport() {
+  const quizMode = ui.mode === 'quiz' && ui.quiz;
+  $('export').classList.toggle('quiz-export', !!quizMode);
+  if (quizMode) { const v = $('export-form').querySelector('input[name=format][value=vertical]'); if (v) v.checked = true; }
   const q = QUALITIES[(new FormData($('export-form'))).get('quality') || '1080'];
   const mime = pickMime(q);
   $('codec-field').hidden = !hevcMime(q);
   $('export-note').textContent = mime
     ? `Plays the whole play once in real time while it records (about ${Math.round(timing(play).total + 3)} seconds), then downloads ${mime.includes('mp4') ? 'an MP4' : 'a WebM'} file. Keep this tab open until it finishes.`
     : 'This browser can’t record video. Try Chrome, Edge or Safari on a computer.';
+  if (mime && quizMode) $('export-note').textContent = `Records this question as a quiz Short, about 18 seconds: a title, the play from #${(playerOf(ui.quiz.scene.you) || {}).num}'s eyes, a 5-second pause with the choices, the answer, the replay from above and the rule. Keep this tab open until it finishes.`;
   $('export-go').disabled = !mime;
   $('export').showModal();
 }
@@ -1069,6 +1109,7 @@ function startExport() {
   ui.T = 0; ui.snap = true; ui.beat = -1; ui.endHold = 0;
   const recorder = new Recorder(scene, q);
   scene.setRecordSize(q);
+  if (ui.mode === 'quiz' && ui.quiz) return startQuizExport(opts, mime, q, recorder);
   const lead = opts.camera === 'cinematic' ? 1.4 : 0.8;
   ui.rec = { opts, recorder, t: 0, tail: 0, lead, started: false, total: lead + timing(play).total + 1.4, saved: { loop: ui.loop, damping: scene.controls.enableDamping, cam: scene.camera.position.clone(), target: scene.controls.target.clone() } };
   ui.loop = false;
@@ -1086,9 +1127,64 @@ function startExport() {
   renderAll();
   recorder.start({ mime, title: play.name, captions: opts.captions, numbers: opts.numbers });
 }
+// ---------- Quiz Short: hook, play from their eyes, 5 s pause, reveal, the read, the rule ----------
+const QUIZ_SHORT = { hook: 1.8, count: 5, reveal: 1.6, outro: 2.6 };
+function startQuizExport(opts, mime, q, recorder) {
+  const i = ui.quiz.i;
+  store('court.quizIntro', '1');
+  startQuiz(i);
+  setPlaying(false);
+  ui.T = 0; ui.snap = true;
+  const sc = ui.quiz.scene;
+  const playLen = ui.quiz.freezeT + (timing(play).total - ui.quiz.freezeT + 1.2) / 0.75;
+  ui.rec = { opts, recorder, quiz: true, qphase: 'hook', qt: 0, t: 0, tail: 0, total: QUIZ_SHORT.hook + playLen + QUIZ_SHORT.count + QUIZ_SHORT.reveal + QUIZ_SHORT.outro + 1,
+    saved: { loop: ui.loop, damping: scene.controls.enableDamping, cam: scene.camera.position.clone(), target: scene.controls.target.clone() } };
+  ui.loop = false;
+  quizCam('pov', { silent: true });
+  $('quiz-card').hidden = true; $('quiz-banner').hidden = true;
+  $('app').classList.add('recording');
+  $('labels').hidden = true;
+  $('rec-status').hidden = false;
+  recorder.start({ mime, title: sc.title || play.name, captions: false, numbers: opts.numbers });
+}
+function quizRecState(R) {
+  const sc = ui.quiz.scene, me = playerOf(sc.you) || {};
+  const correct = sc.choices.findIndex((c) => c.correct);
+  return { phase: R.qphase, t: R.qt, count: QUIZ_SHORT.count, you: me.num, title: sc.title || play.name, prompt: sc.prompt,
+    choices: sc.choices.map((c) => c.label), correct, why: sc.choices[correct].why, rule: sc.rule };
+}
+function quizRecTick(R, dt, total) {
+  R.t += dt; R.qt += dt;
+  const q = ui.quiz;
+  const st = $('rec-time'); if (st) st.textContent = `${Math.min(R.t, R.total).toFixed(1)} / ${R.total.toFixed(1)} s`;
+  const go = (ph) => { R.qphase = ph; R.qt = 0; };
+  if (R.qphase === 'hook' && R.qt >= QUIZ_SHORT.hook) { go('play'); setPlaying(true); }
+  else if (R.qphase === 'play' && q.phase === 'freeze') { go('freeze'); $('quiz-card').hidden = true; }
+  else if (R.qphase === 'freeze' && R.qt >= QUIZ_SHORT.count) go('reveal');
+  else if (R.qphase === 'reveal' && R.qt >= QUIZ_SHORT.reveal) {
+    go('replay');
+    const sc = q.scene;
+    q.phase = 'answer';
+    if (sc.answerMoves) { const m = play.beats[sc.freeze[0]].moves; m[sc.you] = { ...(m[sc.you] || {}), ...clone(sc.answerMoves) }; }
+    ui.arrows = true;
+    quizCam('broadcast', { silent: true });
+    if (R.opts.format === 'vertical') {
+      // A higher, tighter camera so the half court fills a tall Reel.
+      scene.camera.position.set(0, 13.2, 6.4);
+      scene.controls.target.set(0, 0, -2.6);
+      scene.camera.lookAt(scene.controls.target);
+    }
+    ui.speed = 0.75;
+    ui.T = Math.max(0, q.freezeT - 1.2); ui.snap = true;
+    setPlaying(true);
+  } else if (R.qphase === 'replay' && ui.T >= total) { R.tail += dt; if (R.tail > 0.6) { go('outro'); setPlaying(false); } }
+  else if (R.qphase === 'outro' && R.qt >= QUIZ_SHORT.outro && !R.finishing) finishExport();
+  if (R.qphase !== 'play') $('quiz-card').hidden = true;
+}
 function restoreAfterExport() {
   const R = ui.rec;
   ui.rec = null;
+  if (R.quiz) { ui.speed = 1; $('speed').textContent = '1×'; }
   ui.loop = R.saved.loop;
   scene.setRecordSize(null);
   scene.controls.enableDamping = R.saved.damping;
@@ -1114,6 +1210,7 @@ async function finishExport() {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
   toast(`Saved ${a.download}`);
+  if (ui.mode === 'quiz' && ui.quiz) startQuiz(ui.quiz.i);
 }
 function cancelExport() { if (!ui.rec) return; ui.rec.recorder.cancel(); restoreAfterExport(); toast('Recording cancelled'); }
 

@@ -470,3 +470,8 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 .myq-acts { position: absolute; right: 6px; top: 6px; display: flex; gap: 2px; }
 .myq-acts .icon-btn { width: 28px; height: 28px; background: var(--surface); }
 @media (max-width: 560px) { .maker-choice { grid-template-columns: 34px minmax(0, 1fr); } .maker-choice input[name^=w] { grid-column: 2; } }
+
+/* Quiz Short export: the camera is always the player's eyes, so hide the camera choice. */
+#export.quiz-export .choices:first-of-type { display: none; }
+.app.quizzing .stage canvas { cursor: grab; }
+.app.quizzing .stage canvas:active { cursor: grabbing; }
