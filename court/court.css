@@ -435,3 +435,11 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 .quiz-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .quiz-acts .seg { margin-right: auto; }
 @media (max-width: 900px) { .app.quizzing { grid-template-columns: minmax(0, 1fr); } .quiz-choices { grid-template-columns: minmax(0, 1fr); } .quiz-card { bottom: 8px; } }
+
+/* After answering, the card docks to the side so the replay shows. */
+.quiz-card.answered { left: auto; right: 14px; bottom: 14px; transform: none; width: min(380px, calc(100% - 24px)); animation: none; }
+.quiz-card.answered h3 { font-size: 14px; color: var(--ink-2); font-weight: 500; }
+.quiz-card.answered .quiz-choices { grid-template-columns: minmax(0, 1fr); }
+.quiz-card.answered .quiz-choice:not(.right):not(.wrong) { display: none; }
+.quiz-card.answered .quiz-acts { flex-wrap: wrap; }
+@media (max-width: 900px) { .quiz-card.answered { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 55%; } }

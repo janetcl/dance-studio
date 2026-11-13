@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261113x';
-import { QUIZ } from './quiz.js?v=20261113x';
+import { CourtScene, W } from './scene.js?v=20261113y';
+import { QUIZ } from './quiz.js?v=20261113y';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261113x';
+import { PRESETS } from './plays.js?v=20261113y';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113x';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113x';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113x';
+} from './model.js?v=20261113y';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113y';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113y';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -449,6 +449,7 @@ function showQuestion() {
   $('quiz-choices').innerHTML = sc.choices.map((c, k) => `<button class="quiz-choice" data-choice="${k}"><span class="quiz-letter">${'ABCD'[k]}</span>${esc(c.label)}</button>`).join('');
   $('quiz-choices').hidden = false;
   $('quiz-result').hidden = true;
+  $('quiz-card').classList.remove('answered');
   $('quiz-card').hidden = false;
   $('quiz-banner').hidden = true;
 }
@@ -457,6 +458,7 @@ function answerQuiz(k) {
   if (!q || q.phase !== 'freeze') return;
   const sc = q.scene, pick = sc.choices[k], right = sc.choices.find((c) => c.correct);
   q.phase = 'answer';
+  $('quiz-card').classList.add('answered');
   const scores = quizScores(); scores[sc.id] = !!pick.correct; try { localStorage.setItem(QUIZ_KEY, JSON.stringify(scores)); } catch { /* ignore */ }
   document.querySelectorAll('.quiz-choice').forEach((b, i) => { b.disabled = true; b.classList.toggle('right', !!sc.choices[i].correct); b.classList.toggle('wrong', i === k && !pick.correct); });
   $('quiz-verdict').textContent = pick.correct ? 'Right read.' : `Not quite. The read is: ${right.label.toLowerCase()}.`;
