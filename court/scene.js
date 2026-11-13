@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261114m';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114m';
+import { Player } from './players.js?v=20261114q';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261114q';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -880,11 +880,14 @@ export class CourtScene {
     }
   }
 
+  ghostStanchion(ghost) {
+    for (const m of this.stanchionMats || []) { m.transparent = ghost; m.opacity = ghost ? 0.18 : 1; m.depthWrite = !ghost; m.needsUpdate = true; }
+  }
+
   setView(name) {
     const v = VIEWS[name] || VIEWS.broadcast;
     // From the baseline the stanchion would block the play, so make it see-through.
-    const ghost = name === 'baseline';
-    for (const m of this.stanchionMats || []) { m.transparent = ghost; m.opacity = ghost ? 0.18 : 1; m.depthWrite = !ghost; m.needsUpdate = true; }
+    this.ghostStanchion(name === 'baseline');
     this.camera.position.set(...v.pos);
     this.controls.target.set(...v.target);
     this.controls.update();
@@ -1019,6 +1022,9 @@ export class CourtScene {
       if (!x.root.visible) continue;
       const atFeet = document.body.dataset.tags === 'floor';
       proj.set(x.root.position.x, atFeet ? 0.02 : 2.05 * (x.look.height || 1) + x.root.position.y, x.root.position.z).project(this.camera);
+      // Behind the camera, off screen or faded out: no tag, so none float in the air.
+      const off = proj.z > 1 || Math.abs(proj.x) > 1.1 || Math.abs(proj.y) > 1.1 || x.alpha < 0.55;
+      x.tag.style.visibility = off ? 'hidden' : '';
       x.tag.style.transform = `translate(${((proj.x + 1) / 2) * w}px, ${((1 - proj.y) / 2) * h}px) translate(-50%, ${atFeet ? '-20%' : '-100%'})${atFeet ? ' scaleY(.6)' : ''}`;
     }
   }

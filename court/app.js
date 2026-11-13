@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114m';
-import { QUIZ } from './quiz.js?v=20261114m';
+import { CourtScene, W } from './scene.js?v=20261114q';
+import { QUIZ } from './quiz.js?v=20261114q';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114m';
+import { PRESETS } from './plays.js?v=20261114q';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114m';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114m';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114m';
+} from './model.js?v=20261114q';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114q';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114q';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -367,6 +367,30 @@ function renderTimeline() {
 }
 function resetLook() { if (!ui.quiz) return; ui.quiz.yaw = 0; ui.quiz.pitch = 0; $('look-reset').hidden = true; }
 
+// The overhead map in Your eyes: everyone's spot, the ball, you, and where you're looking.
+function updateRadar(f) {
+  const svg = $('radar-dots');
+  if (!svg) return;
+  const t = teamsOf(play), you = ui.quiz.scene.you;
+  const ballUV = [scene.ball.position.x / 0.03048 + 250, scene.ball.position.z / 0.03048 + 235];
+  let h = '';
+  for (const p of play.players) {
+    const uv = f.pos[p.id];
+    if (!uv || (p.side === 'D' && (!ui.defense || play.defense === 'none'))) continue;
+    const k = t[p.side], me = p.id === you;
+    h += `<circle cx="${uv[0].toFixed(0)}" cy="${uv[1].toFixed(0)}" r="${me ? 22 : p.side === 'O' ? 17 : 14}" fill="${k.jersey}" stroke="${me ? '#E0552E' : '#fff'}" stroke-width="${me ? 7 : 3}"/>`;
+    if (p.side === 'O') h += `<text x="${uv[0].toFixed(0)}" y="${(uv[1] + 7).toFixed(0)}" text-anchor="middle" font-family="Geist,sans-serif" font-weight="700" font-size="20" fill="${k.num}">${p.num}</text>`;
+  }
+  h += `<circle cx="${ballUV[0].toFixed(0)}" cy="${ballUV[1].toFixed(0)}" r="9" fill="#D9631E" stroke="#1D1A17" stroke-width="2"/>`;
+  svg.innerHTML = h;
+  // View cone from your spot toward where the camera looks.
+  const me = f.pos[you];
+  const dir = new THREE.Vector3(); scene.camera.getWorldDirection(dir);
+  const a = Math.atan2(dir.z, dir.x), spread = 0.55, L = 150;
+  const p1 = [me[0] + Math.cos(a - spread) * L, me[1] + Math.sin(a - spread) * L], p2 = [me[0] + Math.cos(a + spread) * L, me[1] + Math.sin(a + spread) * L];
+  $('radar-cone').setAttribute('d', `M${me[0]} ${me[1]}L${p1[0]} ${p1[1]}A${L} ${L} 0 0 1 ${p2[0]} ${p2[1]}Z`);
+}
+
 // ---------- Question maker ----------
 function openMaker() {
   const id = ui.sel, k = ui.beat;
@@ -468,7 +492,7 @@ function startQuiz(i) {
   if (look) { play.theme = look.theme; if (look.teams) play.teams = { ...look.teams }; else delete play.teams; play.court = clone(look.court || {}); }
   const { starts } = timing(play);
   const freezeT = starts[sc.freeze[0]] + play.beats[sc.freeze[0]].dur * sc.freeze[1];
-  ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null, yaw: 0, pitch: 0 };
+  ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null, yaw: 0, pitch: 0, aimYaw: undefined };
   $('look-reset').hidden = true;
   ui.sel = sc.you; ui.arrows = false; ui.T = 0; ui.snap = true; ui.endHold = 0;
   ui.speed = 1; $('speed').textContent = '1×';
@@ -487,6 +511,7 @@ function showQuizIntro() {
   $('quiz-choices').innerHTML = '<button class="btn primary" data-action="quiz-start">Start question 1</button>';
   $('quiz-choices').hidden = false;
   $('quiz-result').hidden = true;
+  $('quiz-skip').hidden = false;
   $('quiz-card').classList.remove('answered');
   $('quiz-card').hidden = false;
   $('quiz-banner').hidden = true;
@@ -510,6 +535,8 @@ function povOn() {
   const c = scene.controls;
   ui.povSaved = ui.povSaved || { min: c.minDistance, maxPolar: c.maxPolarAngle };
   c.enabled = false; c.enableDamping = false; c.minDistance = 0.05; c.maxPolarAngle = Math.PI;
+  scene.ghostStanchion(true);
+  $('app').classList.add('pov');
   // About 60° across on any screen shape, so a tall Reel isn't zoomed in.
   const a = scene.camera.aspect || 1.6;
   scene.camera.fov = a >= 1.2 ? 66 : Math.min(95, (2 * Math.atan(Math.tan((30 * Math.PI) / 180) / a) * 180) / Math.PI);
@@ -519,6 +546,8 @@ function povOff() {
   const c = scene.controls;
   if (ui.povSaved) { c.minDistance = ui.povSaved.min; c.maxPolarAngle = ui.povSaved.maxPolar; ui.povSaved = null; }
   c.enabled = true; c.enableDamping = true;
+  scene.ghostStanchion(scene.view === 'baseline');
+  $('app').classList.remove('pov');
   scene.resize();
   for (const x of scene.people.values()) { x.tag.style.display = ''; x.setOpacity(1); }
 }
@@ -545,12 +574,19 @@ function quizTick(f, dt) {
   const p = W(uv[0], uv[1]), h = me.look.height || 1, a = me.heading;
   // Steady camera: fixed eye height, a level aim (it follows where the ball is, not its bounce),
   // and smoothed movement so walking and turning don't bob the view.
-  const eyeWant = new THREE.Vector3(p.x + Math.sin(a) * 0.16, 1.62 * h, p.z + Math.cos(a) * 0.16);
   const ball = scene.ball.position, rim = W(250, 52.5, 0);
   const want = new THREE.Vector3(ball.x + (rim.x - ball.x) * 0.3, 1.15, ball.z + (rim.z - ball.z) * 0.3);
-  if (!q.look || !q.eye || ui.snap) { q.look = want.clone(); q.eye = eyeWant.clone(); }
-  else { q.look.lerp(want, Math.min(1, dt * 1.8)); q.eye.lerp(eyeWant, Math.min(1, dt * 5)); }
-  q.eye.y = 1.62 * h;
+  // Turn toward the action smoothly by angle (an aim point can lag behind the camera and flip
+  // the view around), then sit just behind and above your head on the side away from it.
+  const yawWant = Math.atan2(want.x - p.x, want.z - p.z);
+  if (q.aimYaw === undefined || ui.snap) q.aimYaw = yawWant;
+  else { let d = yawWant - q.aimYaw; d = Math.atan2(Math.sin(d), Math.cos(d)); q.aimYaw += d * Math.min(1, dt * 4); }
+  const fx = Math.sin(q.aimYaw), fz = Math.cos(q.aimYaw);
+  const eyeWant = new THREE.Vector3(p.x - fx * 0.5, 1.85 * h, p.z - fz * 0.5);
+  if (!q.eye || ui.snap) q.eye = eyeWant.clone(); else q.eye.lerp(eyeWant, Math.min(1, dt * 5));
+  q.eye.y = 1.85 * h;
+  const flatDist = Math.max(2.5, Math.hypot(want.x - p.x, want.z - p.z));
+  q.look = new THREE.Vector3(q.eye.x + fx * flatDist, 1.15, q.eye.z + fz * flatDist);
   const eye = q.eye;
   if (q.yaw || q.pitch) {
     // Your own look-around (drag in Your eyes), applied on top of the aim at the ball.
@@ -573,10 +609,11 @@ function quizTick(f, dt) {
   for (const [id, x] of scene.people) {
     if (id === q.scene.you) { x.setOpacity(0); continue; }
     const d = Math.hypot(x.root.position.x - eye.x, x.root.position.z - eye.z);
-    x.setOpacity(d < 1.4 ? 0.12 : d < 2.6 ? 0.12 + (d - 1.4) / 1.2 * 0.88 : 1);
+    x.setOpacity(d < 1.8 ? 0 : d < 3.2 ? (d - 1.8) / 1.4 : 1);
   }
 }
 function showQuestion() {
+  $('play-btn').title = 'Not sure? Show me the answer (Space)';
   const q = ui.quiz, sc = q.scene;
   const me = play.players.find((p) => p.id === sc.you);
   $('quiz-k').textContent = `${sc.title || ''}${sc.title ? ' · ' : ''}You’re #${me.num}`;
@@ -588,17 +625,20 @@ function showQuestion() {
   $('quiz-card').hidden = false;
   $('quiz-banner').hidden = true;
 }
+// k = the choice picked, or -1 for "Not sure, show me" (shows the read without scoring it).
 function answerQuiz(k) {
   const q = ui.quiz;
   if (!q || q.phase !== 'freeze') return;
-  const sc = q.scene, pick = sc.choices[k], right = sc.choices.find((c) => c.correct);
+  const sc = q.scene, skipped = k < 0, right = sc.choices.find((c) => c.correct);
+  const pick = skipped ? right : sc.choices[k];
   q.phase = 'answer';
   $('quiz-card').classList.add('answered');
-  const scores = quizScores(); scores[sc.id] = !!pick.correct; try { localStorage.setItem(QUIZ_KEY, JSON.stringify(scores)); } catch { /* ignore */ }
-  document.querySelectorAll('.quiz-choice').forEach((b, i) => { b.disabled = true; b.classList.toggle('right', !!sc.choices[i].correct); b.classList.toggle('wrong', i === k && !pick.correct); });
-  $('quiz-verdict').textContent = pick.correct ? 'Right read.' : `Not quite. The read is: ${right.label.toLowerCase()}.`;
-  $('quiz-verdict').className = 'quiz-verdict ' + (pick.correct ? 'ok' : 'no');
-  $('quiz-explain').textContent = pick.correct ? pick.why : `${pick.why} ${right.why}`;
+  if (!skipped) { const scores = quizScores(); scores[sc.id] = !!pick.correct; try { localStorage.setItem(QUIZ_KEY, JSON.stringify(scores)); } catch { /* ignore */ } }
+  document.querySelectorAll('.quiz-choice').forEach((b, i) => { b.disabled = true; b.classList.toggle('right', !!sc.choices[i].correct); b.classList.toggle('wrong', !skipped && i === k && !pick.correct); });
+  $('quiz-skip').hidden = true;
+  $('quiz-verdict').textContent = skipped ? `Here’s the read: ${right.label.toLowerCase()}.` : pick.correct ? 'Right read.' : `Not quite. The read is: ${right.label.toLowerCase()}.`;
+  $('quiz-verdict').className = 'quiz-verdict ' + (skipped ? '' : pick.correct ? 'ok' : 'no');
+  $('quiz-explain').textContent = pick.correct ? right.why : `${pick.why} ${right.why}`;
   $('quiz-rule').textContent = sc.rule;
   $('quiz-result').hidden = false;
   $('quiz-next').textContent = 'Next question';
@@ -823,7 +863,7 @@ function frame(nowMs) {
   scene.overlay.material.opacity = ui.playing ? Math.min(1, f.t * 6) * (ui.T >= total ? Math.max(0, 1 - ui.endHold * 2) : 1) : 1;
   if (ui.mode === 'quiz') quizTick(f, dt);
   scene.update(f, { dt, now: clockNow, snap: ui.snap, selected: ui.rec ? null : ui.sel, showDefense: ui.defense && play.defense !== 'none' });
-  if (ui.mode === 'quiz' && ui.quiz && ui.quiz.cam === 'pov') { const me = scene.people.get(ui.quiz.scene.you); if (me) me.tag.style.display = 'none'; }
+  if (ui.mode === 'quiz' && ui.quiz && ui.quiz.cam === 'pov') { const me = scene.people.get(ui.quiz.scene.you); if (me) me.tag.style.display = 'none'; updateRadar(f); }
   if (ui.rec && ui.rec.recorder) {
     const b = ui.rec.started ? play.beats[f.i] : null;
     ui.rec.recorder.frame({ caption: b ? (b.text || beatSummary(f.i)) : '', beatLabel: b ? `Beat ${f.i + 1} · ${b.name}` : '', kits: teamsOf(play), elapsed: ui.rec.t, quiz: ui.rec.quiz ? quizRecState(ui.rec) : null });
@@ -881,7 +921,8 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.close !== undefined) { t.closest('dialog').close(); return; }
   const k = ui.beat, id = ui.sel;
   switch (a) {
-    case 'play': setPlaying(!ui.playing); break;
+    case 'play': if (ui.mode === 'quiz' && ui.quiz && ui.quiz.phase === 'freeze') answerQuiz(-1); else setPlaying(!ui.playing); break;
+    case 'quiz-skip': answerQuiz(-1); break;
     case 'prev': if (ui.mode === 'watch') showQueueItem(ui.qi - 1); else selectBeat(ui.beat - 1); break;
     case 'next': if (ui.mode === 'watch') showQueueItem(ui.qi + 1); else selectBeat(ui.beat + 1); break;
     case 'watch-all': $('playbook').close(); enterWatch(); break;
@@ -978,7 +1019,12 @@ addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (typing) return;
-  if (e.key === ' ' && ui.mode === 'quiz' && ui.quiz && ui.quiz.phase === 'freeze') { e.preventDefault(); return; }
+  if (ui.mode === 'quiz' && ui.quiz && ui.quiz.phase === 'freeze' && !typing) {
+    // At the question: Space = not sure, show me; 1–4 or A–D picks an answer.
+    if (e.key === ' ') { e.preventDefault(); answerQuiz(-1); return; }
+    const n = '1234'.indexOf(e.key) >= 0 ? '1234'.indexOf(e.key) : 'abcd'.indexOf(e.key.toLowerCase());
+    if (n >= 0 && n < ui.quiz.scene.choices.length && e.key.length === 1) { answerQuiz(n); return; }
+  }
   if (e.key === ' ' && !e.target.closest('dialog')) { e.preventDefault(); if (tag === 'BUTTON') e.target.blur(); setPlaying(!ui.playing); }
   else if (e.key === '[') $('app').querySelector('[data-action="prev"]').click();
   else if (e.key === ']') $('app').querySelector('[data-action="next"]').click();

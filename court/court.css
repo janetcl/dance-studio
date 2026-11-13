@@ -477,3 +477,14 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 .app.quizzing .stage canvas:active { cursor: grabbing; }
 .look-reset { position: absolute; right: 14px; top: 64px; box-shadow: var(--shadow); }
 .app.recording .look-reset { display: none; }
+
+/* Overhead map in Your eyes */
+.radar { display: none; position: absolute; left: 14px; bottom: 14px; width: 190px; padding: 6px; background: rgba(255,255,255,.94); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); pointer-events: none; }
+.app.quizzing.pov .radar { display: block; }
+.app.recording .radar { display: none !important; }
+.radar svg { display: block; width: 100%; height: auto; }
+.radar span { position: absolute; top: 8px; left: 12px; font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+.quiz-skip { align-self: flex-start; border: 0; background: transparent; color: var(--ink-2); font-size: 13px; padding: 4px 0; display: inline-flex; gap: 8px; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
+.quiz-skip:hover { color: var(--ink); }
+.quiz-skip kbd { font: 600 11px var(--font); border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 5px; text-decoration: none; background: var(--surface-2); }
+@media (max-width: 900px) { .radar { width: 130px; bottom: auto; top: 60px; } }
