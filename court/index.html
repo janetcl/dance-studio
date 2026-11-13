@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261113v" />
+  <link rel="stylesheet" href="court.css?v=20261113x" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
@@ -28,7 +28,7 @@
     <header class="topbar">
       <a class="brand" href="../" title="Dance Studio"><img src="../assets/icon.svg" alt="" width="26" height="26" /><span class="hide-sm">Dance Studio</span></a>
       <nav class="modes hide-xs" aria-label="Mode"><a href="../">Dance</a><a href="./" aria-current="page">Court</a></nav>
-      <div class="seg mode-seg" role="group" aria-label="Edit or watch"><button data-mode="edit">Edit</button><button data-mode="watch">Watch</button></div>
+      <div class="seg mode-seg" role="group" aria-label="Edit or watch"><button data-mode="edit">Edit</button><button data-mode="watch">Watch</button><button data-mode="quiz">Quiz</button></div>
       <input id="title" class="title-input" spellcheck="false" aria-label="Play name" />
       <span id="saved" class="saved">Saved</span>
       <div class="topbar-right">
@@ -57,6 +57,11 @@
           <button class="switch-row" data-action="autoplay" role="switch" id="autoplay" aria-checked="true"><span>Autoplay</span><span class="switch"><span></span></span></button>
         </div>
         <ol class="playlist" id="playlist"></ol>
+      </div>
+      <div class="quiz-side">
+        <div class="panel-head"><h2>Quiz <span class="count" id="quiz-score"></span></h2></div>
+        <p class="quiz-intro">Each question plays from one player’s eyes, then freezes. Pick what they should do.</p>
+        <ol class="playlist" id="quizlist"></ol>
       </div>
     </aside>
 
@@ -90,6 +95,22 @@
         <div class="un-thumb" id="un-thumb"></div>
         <div class="un-t"><span class="un-k">Up next</span><b id="un-name"></b><span id="un-meta"></span><span class="un-bar"><span id="un-fill"></span></span></div>
         <div class="un-acts"><button class="btn small primary" data-action="upnext-now">Play now</button><button class="btn small" data-action="upnext-stay">Stay on this one</button></div>
+      </div>
+      <div class="quiz-banner" id="quiz-banner" hidden></div>
+      <div class="quiz-card" id="quiz-card" hidden role="dialog" aria-labelledby="quiz-q">
+        <p class="quiz-k" id="quiz-k"></p>
+        <h3 id="quiz-q"></h3>
+        <div class="quiz-choices" id="quiz-choices"></div>
+        <div class="quiz-result" id="quiz-result" hidden>
+          <p class="quiz-verdict" id="quiz-verdict"></p>
+          <p id="quiz-explain"></p>
+          <p class="quiz-rule"><span>Remember</span><b id="quiz-rule"></b></p>
+          <div class="quiz-acts">
+            <div class="seg small" role="group" aria-label="Camera"><button data-qcam="pov">Your eyes</button><button data-qcam="broadcast">Broadcast</button><button data-qcam="top">Top</button></div>
+            <button class="btn small" data-action="quiz-replay">Try again</button>
+            <button class="btn small primary" data-action="quiz-next" id="quiz-next">Next question</button>
+          </div>
+        </div>
       </div>
       <button class="btn edit-this" data-action="edit-this"><i data-icon="route"></i>Edit this play</button>
       <div class="legend" aria-hidden="true">
@@ -236,6 +257,6 @@
   </dialog>
   <div class="rec-status" id="rec-status" hidden role="status"><span class="rec-dot"></span>Recording <span id="rec-time"></span><button class="btn small" data-action="export-cancel">Cancel</button></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261113v"></script>
+  <script type="module" src="app.js?v=20261113x"></script>
 </body>
 </html>

@@ -1,14 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene } from './scene.js?v=20261113v';
-import { PRESETS } from './plays.js?v=20261113v';
+import { CourtScene, W } from './scene.js?v=20261113x';
+import { QUIZ } from './quiz.js?v=20261113x';
+import * as THREE from 'three';
+import { PRESETS } from './plays.js?v=20261113x';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113v';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113v';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113v';
+} from './model.js?v=20261113x';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113x';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113x';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -33,7 +35,7 @@ function lookChange(fn) {
   ui.watchLook = { theme: play.theme, teams: play.teams && { ...play.teams }, court: clone(play.court || {}) };
   changed({ save: false });
 }
-function mutate(fn) { if (ui.mode === 'watch') return; pushUndo(snapshot()); fn(play); changed(); }
+function mutate(fn) { if (ui.mode !== 'edit') return; pushUndo(snapshot()); fn(play); changed(); }
 let saveTimer;
 function changed({ save = ui.mode === 'edit' } = {}) {
   ui.beat = Math.min(ui.beat, play.beats.length - 1);
@@ -118,7 +120,7 @@ const scene = new CourtScene($('stage'), $('labels'), {
 });
 
 function canDrag(id) {
-  if (ui.mode === 'watch') return false;
+  if (ui.mode !== 'edit') return false;
   const p = play.players.find((x) => x.id === id);
   return p && (p.side === 'O' || play.defense === 'hand');
 }
@@ -337,6 +339,153 @@ function renderTimeline() {
   }
 }
 
+// ---------- Quiz: one decision, seen through one player's eyes ----------
+const QUIZ_KEY = 'court.quiz';
+const quizScores = () => { try { return JSON.parse(localStorage.getItem(QUIZ_KEY) || '{}'); } catch { return {}; } };
+function enterQuiz() {
+  if (ui.mode === 'watch') exitWatch();
+  savePlay(play);
+  ui.editPlay = clone(play);
+  ui.mode = 'quiz';
+  ui.saved = { loop: ui.loop, arrows: ui.arrows };
+  ui.loop = false;
+  startQuiz(0);
+}
+function exitQuiz() {
+  if (ui.mode !== 'quiz') return;
+  ui.mode = 'edit';
+  ui.loop = ui.saved ? ui.saved.loop : true;
+  ui.arrows = ui.saved ? ui.saved.arrows : true;
+  ui.quiz = null;
+  ui.speed = 1; $('speed').textContent = '1×';
+  $('quiz-card').hidden = true; $('quiz-banner').hidden = true;
+  povOff();
+  scene.setView('broadcast'); markView();
+  play = validate(ui.editPlay);
+  ui.sel = null; ui.beat = -1; ui.T = 0; ui.snap = true;
+  setPlaying(false);
+  changed({ save: false });
+}
+function startQuiz(i) {
+  i = ((i % QUIZ.length) + QUIZ.length) % QUIZ.length;
+  const sc = QUIZ[i];
+  const preset = PRESETS.find((p) => p.id === sc.play);
+  play = validate(clone(preset));
+  if (ui.editPlay) { play.theme = ui.editPlay.theme; if (ui.editPlay.teams) play.teams = { ...ui.editPlay.teams }; play.court = clone(ui.editPlay.court || {}); }
+  const { starts } = timing(play);
+  const freezeT = starts[sc.freeze[0]] + play.beats[sc.freeze[0]].dur * sc.freeze[1];
+  ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null };
+  ui.sel = sc.you; ui.arrows = false; ui.T = 0; ui.snap = true; ui.endHold = 0;
+  ui.speed = 1; $('speed').textContent = '1×';
+  const me = play.players.find((p) => p.id === sc.you);
+  $('quiz-banner').innerHTML = `You’re <b>#${esc(me.num)}</b> · watch from their eyes`;
+  $('quiz-banner').hidden = false;
+  $('quiz-card').hidden = true;
+  renderAll();
+  quizCam('pov', { silent: true });
+  setPlaying(true);
+}
+function quizCam(mode, { silent = false } = {}) {
+  if (!ui.quiz) return;
+  ui.quiz.cam = mode;
+  if (mode === 'pov') povOn(); else { povOff(); scene.setView(mode); markView(); }
+  document.querySelectorAll('[data-qcam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.qcam === mode)));
+  if (!silent) ui.snap = false;
+}
+function povOn() {
+  const c = scene.controls;
+  ui.povSaved = ui.povSaved || { min: c.minDistance, maxPolar: c.maxPolarAngle };
+  c.enabled = false; c.enableDamping = false; c.minDistance = 0.05; c.maxPolarAngle = Math.PI;
+  scene.camera.fov = 66; scene.camera.updateProjectionMatrix();
+}
+function povOff() {
+  const c = scene.controls;
+  if (ui.povSaved) { c.minDistance = ui.povSaved.min; c.maxPolarAngle = ui.povSaved.maxPolar; ui.povSaved = null; }
+  c.enabled = true; c.enableDamping = true;
+  scene.resize();
+  for (const x of scene.people.values()) { x.tag.style.display = ''; x.setOpacity(1); }
+}
+// Eye-level camera: just in front of your player's face, looking toward the ball and the rim.
+function quizTick(f, dt) {
+  const q = ui.quiz;
+  if (!q) return;
+  if (q.phase === 'play' && ui.T >= q.freezeT) {
+    ui.T = q.freezeT; setPlaying(false); q.phase = 'freeze'; showQuestion();
+  }
+  // Defenders that set up the read ease to their spot, and stay there.
+  const { starts } = timing(play);
+  for (const [id, d] of Object.entries(q.scene.defense || {})) {
+    if (!f.pos[id]) continue;
+    const t0 = starts[d.beat] + play.beats[d.beat].dur * d.from, t1 = q.freezeT;
+    const k = Math.max(0, Math.min(1, (ui.T - t0) / Math.max(0.1, t1 - t0)));
+    if (k <= 0) continue;
+    const e = k * k * (3 - 2 * k);
+    f.pos[id] = [f.pos[id][0] + (d.to[0] - f.pos[id][0]) * e, f.pos[id][1] + (d.to[1] - f.pos[id][1]) * e];
+  }
+  if (q.cam !== 'pov') { for (const x of scene.people.values()) x.setOpacity(1); return; }
+  const uv = f.pos[q.scene.you], me = scene.people.get(q.scene.you);
+  if (!uv || !me) return;
+  const p = W(uv[0], uv[1]), h = me.look.height || 1, a = me.heading;
+  const eye = new THREE.Vector3(p.x + Math.sin(a) * 0.16, 1.66 * h, p.z + Math.cos(a) * 0.16);
+  const ball = scene.ball.position, rim = W(250, 52.5, 3.05);
+  const want = new THREE.Vector3().lerpVectors(ball, rim, 0.3);
+  want.y = Math.min(want.y, eye.y - 0.25);
+  if (!q.look || ui.snap) q.look = want.clone(); else q.look.lerp(want, Math.min(1, dt * 3.5));
+  scene.camera.position.copy(eye);
+  scene.controls.target.copy(q.look);
+  scene.camera.lookAt(q.look);
+  // Anyone right in front of your eyes fades so they don't block the view.
+  for (const [id, x] of scene.people) {
+    if (id === q.scene.you) { x.setOpacity(0); continue; }
+    const d = Math.hypot(x.root.position.x - eye.x, x.root.position.z - eye.z);
+    x.setOpacity(d < 1.4 ? 0.12 : d < 2.6 ? 0.12 + (d - 1.4) / 1.2 * 0.88 : 1);
+  }
+}
+function showQuestion() {
+  const q = ui.quiz, sc = q.scene;
+  const me = play.players.find((p) => p.id === sc.you);
+  $('quiz-k').textContent = `Question ${q.i + 1} of ${QUIZ.length} · You’re #${me.num}`;
+  $('quiz-q').textContent = sc.prompt;
+  $('quiz-choices').innerHTML = sc.choices.map((c, k) => `<button class="quiz-choice" data-choice="${k}"><span class="quiz-letter">${'ABCD'[k]}</span>${esc(c.label)}</button>`).join('');
+  $('quiz-choices').hidden = false;
+  $('quiz-result').hidden = true;
+  $('quiz-card').hidden = false;
+  $('quiz-banner').hidden = true;
+}
+function answerQuiz(k) {
+  const q = ui.quiz;
+  if (!q || q.phase !== 'freeze') return;
+  const sc = q.scene, pick = sc.choices[k], right = sc.choices.find((c) => c.correct);
+  q.phase = 'answer';
+  const scores = quizScores(); scores[sc.id] = !!pick.correct; try { localStorage.setItem(QUIZ_KEY, JSON.stringify(scores)); } catch { /* ignore */ }
+  document.querySelectorAll('.quiz-choice').forEach((b, i) => { b.disabled = true; b.classList.toggle('right', !!sc.choices[i].correct); b.classList.toggle('wrong', i === k && !pick.correct); });
+  $('quiz-verdict').textContent = pick.correct ? 'Right read.' : `Not quite. The read is: ${right.label.toLowerCase()}.`;
+  $('quiz-verdict').className = 'quiz-verdict ' + (pick.correct ? 'ok' : 'no');
+  $('quiz-explain').textContent = pick.correct ? pick.why : `${pick.why} ${right.why}`;
+  $('quiz-rule').textContent = sc.rule;
+  $('quiz-result').hidden = false;
+  $('quiz-next').textContent = q.i === QUIZ.length - 1 ? 'Back to question 1' : 'Next question';
+  // Show the right version from above: your movement added if the play needs it, slowed down, arrows on.
+  if (sc.answerMoves) { const m = play.beats[sc.freeze[0]].moves; m[sc.you] = { ...(m[sc.you] || {}), ...clone(sc.answerMoves) }; }
+  ui.arrows = true;
+  quizCam('broadcast');
+  ui.speed = 0.75; $('speed').textContent = '0.75×';
+  ui.T = Math.max(0, q.freezeT - 1.2); ui.snap = true;
+  renderQuizList();
+  setPlaying(true);
+}
+function renderQuizList() {
+  const scores = quizScores();
+  const done = QUIZ.filter((x) => x.id in scores).length, right = QUIZ.filter((x) => scores[x.id]).length;
+  $('quiz-score').textContent = done ? `${right} of ${done} right` : `${QUIZ.length} questions`;
+  $('quizlist').innerHTML = QUIZ.map((x, i) => {
+    const pre = PRESETS.find((p) => p.id === x.play);
+    const num = (pre.players.find((p) => p.id === x.you) || {}).num;
+    const st = x.id in scores ? (scores[x.id] ? '<span class="qs ok">Right</span>' : '<span class="qs no">Missed</span>') : '';
+    return `<li><button class="pl-item${ui.quiz && ui.quiz.i === i ? ' on' : ''}" data-quiz="${i}">${thumbSVG({ ...pre, theme: play.theme, teams: play.teams, court: play.court }, x.freeze[0], { w: 76 })}<span class="t"><b>${esc(pre.name)}</b><span>You’re #${esc(num)} · ${esc(pre.level)}</span>${st}</span></button></li>`;
+  }).join('');
+}
+
 // ---------- Watch mode: run through the playbook ----------
 function buildQueue() {
   const mine = libraryIds().map((id) => loadPlay(id)).filter(Boolean);
@@ -416,11 +565,13 @@ function renderAll({ light = false } = {}) {
   r.setProperty('--o', t.O.jersey); r.setProperty('--o-ink', t.O.num); r.setProperty('--d', t.D.jersey); r.setProperty('--d-ink', t.D.num);
   lastMarksKey = '';
   const watching = ui.mode === 'watch';
+  $('app').classList.toggle('quizzing', ui.mode === 'quiz');
   $('app').classList.toggle('watching', watching);
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === ui.mode)));
   $('title').readOnly = watching;
   $('saved').hidden = watching;
-  if (watching) { renderPlaylist(); renderTimeline(); }
+  if (ui.mode === 'quiz') { renderQuizList(); renderTimeline(); }
+  else if (watching) { renderPlaylist(); renderTimeline(); }
   else if (!light) { renderSide(); renderTimeline(); }
   else renderCards();
   updateHandles();
@@ -508,7 +659,9 @@ function frame(nowMs) {
     $('beat-now').textContent = showBeat < 0 ? 'Start' : `Beat ${showBeat + 1}`;
   }
   scene.overlay.material.opacity = ui.playing ? Math.min(1, f.t * 6) * (ui.T >= total ? Math.max(0, 1 - ui.endHold * 2) : 1) : 1;
+  if (ui.mode === 'quiz') quizTick(f, dt);
   scene.update(f, { dt, now: clockNow, snap: ui.snap, selected: ui.rec ? null : ui.sel, showDefense: ui.defense && play.defense !== 'none' });
+  if (ui.mode === 'quiz' && ui.quiz && ui.quiz.cam === 'pov') { const me = scene.people.get(ui.quiz.scene.you); if (me) me.tag.style.display = 'none'; }
   if (ui.rec && ui.rec.recorder) {
     const b = ui.rec.started ? play.beats[f.i] : null;
     ui.rec.recorder.frame({ caption: b ? (b.text || beatSummary(f.i)) : '', beatLabel: b ? `Beat ${f.i + 1} · ${b.name}` : '', kits: teamsOf(play), elapsed: ui.rec.t });
@@ -526,6 +679,7 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button, [data-beat]');
   if (!t) return;
   const a = t.dataset.action || t.dataset.act;
+  if (t.dataset.beat !== undefined && !a && ui.mode === 'quiz') return;
   if (t.dataset.beat !== undefined && !a && ui.mode === 'watch') { ui.T = timing(play).starts[Number(t.dataset.beat)] + 0.001; ui.snap = true; ui.endHold = 0; $('upnext').hidden = true; setPlaying(true); return; }
   if (t.dataset.beat !== undefined && !a) {
     selectBeat(Number(t.dataset.beat));
@@ -534,7 +688,10 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (t.dataset.sel && !a) { ui.sel = ui.sel === t.dataset.sel ? null : t.dataset.sel; renderAll(); return; }
-  if (t.dataset.mode) { if (t.dataset.mode === 'watch') enterWatch(); else exitWatch(); return; }
+  if (t.dataset.mode) { const m = t.dataset.mode; if (m === ui.mode) return; if (ui.mode === 'quiz') exitQuiz(); if (m === 'watch') enterWatch(); else if (m === 'quiz') enterQuiz(); else exitWatch(); return; }
+  if (t.dataset.qcam) { quizCam(t.dataset.qcam); return; }
+  if (t.dataset.choice !== undefined) { answerQuiz(Number(t.dataset.choice)); return; }
+  if (t.dataset.quiz !== undefined) { startQuiz(Number(t.dataset.quiz)); if (innerWidth <= 900) $('left').classList.remove('open'); return; }
   if (t.dataset.qi !== undefined) { showQueueItem(Number(t.dataset.qi)); if (innerWidth <= 900) $('left').classList.remove('open'); return; }
   if (t.dataset.view) { scene.setView(t.dataset.view); markView(); return; }
   if (t.dataset.toggle) { ui[t.dataset.toggle] = !ui[t.dataset.toggle]; renderAll(); return; }
@@ -598,6 +755,8 @@ document.addEventListener('click', async (e) => {
     case 'theme': lookChange(() => { play.theme = t.dataset.v; delete play.teams; }); closePops(); break;
     case 'colors-pop': togglePop(); break;
     case 'playbook': openPlaybook(); break;
+    case 'quiz-next': startQuiz(ui.quiz ? ui.quiz.i + 1 : 0); break;
+    case 'quiz-replay': startQuiz(ui.quiz ? ui.quiz.i : 0); break;
     case 'export': openExport(); break;
     case 'export-go': startExport(); break;
     case 'export-cancel': cancelExport(); break;
@@ -647,6 +806,7 @@ addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'z') { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
   if (typing) return;
+  if (e.key === ' ' && ui.mode === 'quiz' && ui.quiz && ui.quiz.phase === 'freeze') { e.preventDefault(); return; }
   if (e.key === ' ' && !e.target.closest('dialog')) { e.preventDefault(); if (tag === 'BUTTON') e.target.blur(); setPlaying(!ui.playing); }
   else if (e.key === '[') $('app').querySelector('[data-action="prev"]').click();
   else if (e.key === ']') $('app').querySelector('[data-action="next"]').click();
@@ -879,7 +1039,7 @@ addEventListener('resize', () => { if (tourAt >= 0) showTour(); });
 
 // ---------- Recording hook ----------
 window.__court = {
-  get play() { return play; }, ui, scene, setPlaying, selectBeat, loadInto, PRESETS, enterWatch, exitWatch, showQueueItem,
+  get play() { return play; }, ui, scene, setPlaying, selectBeat, loadInto, PRESETS, enterWatch, exitWatch, showQueueItem, enterQuiz, startQuiz, answerQuiz, quizCam,
   step(dt) { ui.manual = true; ui.fixedDt = dt; frame(performance.now()); },
 };
 
