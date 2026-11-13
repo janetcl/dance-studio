@@ -79,7 +79,7 @@ export class Player extends Person {
     this.mats.outfit.color.set(kit.jersey);
     this.mats.pants.color.set(kit.shorts || kit.jersey);
     this.disc.material.color.set(kit.jersey);
-    const tex = numberTexture(this.look.num, kit.num, kit.trim);
+    const tex = numberTexture(String(this.look.label ?? ''), kit.num, kit.trim);
     for (const m of this.numMats) { if (m.map) m.map.dispose(); m.map = tex; m.needsUpdate = true; }
   }
 }

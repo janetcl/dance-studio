@@ -4,132 +4,137 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Court Mode · Dance Studio</title>
-  <meta name="description" content="Watch a basketball play happen beat by beat on a 3D half court." />
+  <meta name="description" content="Draw up basketball plays beat by beat and watch them run on a 3D half court." />
   <link rel="icon" href="../assets/icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="court.css" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
-  <style>
-    :root {
-      --bg: #F3F0EA; --surface: #FFFFFF; --surface-3: #EFEBE4; --line: #E3DDD3;
-      --ink: #1D1A17; --ink-2: #625B53; --ink-3: #8A8278; --accent: #E0552E; --accent-soft: #FBE7DF;
-      --o: #D62839; --o-ink: #fff; --d: #1F4FD1; --d-ink: #fff;
-      --font: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
-      --serif: "Instrument Serif", Georgia, serif;
-      color-scheme: light;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
-    button { font: inherit; color: inherit; cursor: pointer; }
-    .app { height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
-    header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-    .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; text-decoration: none; color: inherit; }
-    .brand img { width: 24px; height: 24px; }
-    .pill { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: #8F3215; }
-    .title { font-family: var(--serif); font-size: 22px; line-height: 1.1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .themes { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
-    .themes button { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
-    .themes button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-weight: 600; }
-    .sw { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,.15); }
-    .sw + .sw { margin-left: -9px; }
-    main { position: relative; min-height: 0; overflow: hidden; }
-    #court { position: absolute; inset: 0; }
-    #court canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-    .tag { position: absolute; left: 0; top: 0; font: 700 12px/1 var(--font); padding: 3px 7px; border-radius: 999px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
-    .tag.O { background: var(--o); color: var(--o-ink); border: 1.5px solid rgba(255,255,255,.9); }
-    .tag.D { background: var(--d); color: var(--d-ink); border: 1.5px solid rgba(255,255,255,.9); }
-    .caption { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(640px, calc(100% - 32px)); background: rgba(29,26,23,.88); color: #fff; border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
-    .caption b { font-size: 15px; }
-    .caption span { color: #E4DDD2; font-size: 13px; }
-    .views { position: absolute; left: 14px; bottom: 14px; display: flex; padding: 3px; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-    .views button { border: 0; background: transparent; padding: 6px 10px; border-radius: 7px; font-size: 13px; min-height: 32px; }
-    .views button[aria-pressed="true"] { background: var(--ink); color: #fff; }
-    .legend { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 12px; padding: 8px 12px; background: rgba(255,255,255,.94); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; color: var(--ink-2); }
-    .legend span { display: flex; align-items: center; gap: 6px; }
-    .timeline { background: var(--surface); border-top: 1px solid var(--line); padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
-    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .play { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; }
-    .play svg { width: 16px; height: 16px; fill: currentColor; }
-    .btn { height: 32px; padding: 0 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; font-size: 13px; }
-    .now { display: flex; flex-direction: column; line-height: 1.15; min-width: 84px; }
-    .now b { font-size: 17px; }
-    .now span { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-    .shot { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; background: var(--ink); color: #FFB37A; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .shot small { font-size: 10px; color: #D9D2C7; font-weight: 500; letter-spacing: .06em; }
-    .track { position: relative; }
-    #beats { display: flex; gap: 4px; }
-    .beat { flex: 1 1 0; min-width: 0; height: 50px; border: 0; border-radius: 8px; background: var(--surface-3); text-align: left; padding: 6px 9px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
-    .beat b, .beat span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .beat b { font-size: 13px; }
-    .beat span { font-size: 12px; color: var(--ink-2); }
-    .beat.on { background: var(--accent); color: #fff; }
-    .beat.on span { color: #FFE6DC; }
-    .playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); pointer-events: none; border-radius: 1px; }
-    .note { font-size: 12px; color: var(--ink-2); margin-left: auto; }
-    @media (max-width: 720px) {
-      .title { font-size: 18px; }
-      .themes { margin-left: 0; width: 100%; overflow-x: auto; flex-wrap: nowrap; }
-      .themes button { flex: none; }
-      .legend { display: none; }
-      .beat span { display: none; }
-      .note, #restart { display: none; }
-      header { gap: 8px 10px; }
-      .pill { display: none; }
-      .caption { top: 8px; padding: 8px 12px; }
-      .caption span { font-size: 12px; }
-    }
-  </style>
 </head>
 <body>
-  <div class="app">
-    <header>
-      <a class="brand" href="../"><img src="../assets/icon.svg" alt="" />Dance Studio</a>
-      <span class="pill">Court Mode preview</span>
-      <span class="title" id="play-name"></span>
-      <div class="themes" role="group" aria-label="Team colors">
-        <button data-theme-pick="rb"><span class="sw" style="background:#D62839"></span><span class="sw" style="background:#1F4FD1"></span>Red vs blue</button>
-        <button data-theme-pick="tp"><span class="sw" style="background:#0E8C7F"></span><span class="sw" style="background:#6A3FC1"></span>Teal vs purple</button>
-        <button data-theme-pick="gg"><span class="sw" style="background:#1E7B3C"></span><span class="sw" style="background:#F2B705"></span>Green vs gold</button>
-        <button data-theme-pick="bw"><span class="sw" style="background:#1D1A17"></span><span class="sw" style="background:#F4F2EE"></span>Black vs white</button>
-        <button data-theme-pick="nysa"><span class="sw" style="background:#F58426"></span><span class="sw" style="background:#C4CED4"></span>NY vs SA jerseys</button>
+  <div class="app" id="app">
+    <header class="topbar">
+      <a class="brand" href="../" title="Dance Studio"><img src="../assets/icon.svg" alt="" width="26" height="26" /><span class="hide-sm">Dance Studio</span></a>
+      <nav class="modes hide-xs" aria-label="Mode"><a href="../">Dance</a><a href="./" aria-current="page">Court</a></nav>
+      <input id="title" class="title-input" spellcheck="false" aria-label="Play name" />
+      <span id="saved" class="saved">Saved</span>
+      <div class="topbar-right">
+        <button class="icon-btn only-narrow" data-action="toggle-left" title="Beats"><i data-icon="sliders"></i></button>
+        <button class="icon-btn only-narrow" data-action="toggle-right" title="Players"><i data-icon="users"></i></button>
+        <button class="icon-btn" data-action="undo" title="Undo (⌘Z)"><i data-icon="undo"></i></button>
+        <button class="icon-btn" data-action="redo" title="Redo (⇧⌘Z)"><i data-icon="redo"></i></button>
+        <button class="btn ghost hide-xs" data-action="flip" title="Mirror the play left ↔ right"><i data-icon="mirror"></i><span class="hide-sm">Flip</span></button>
+        <button class="btn ghost hide-xs" data-action="new" title="New play"><i data-icon="plus"></i><span class="hide-sm">New</span></button>
+        <button class="btn ghost" data-action="playbook"><i data-icon="folder"></i><span class="hide-sm">Playbook</span></button>
+        <button class="btn primary" data-action="share"><i data-icon="share"></i><span class="hide-sm">Share</span></button>
       </div>
     </header>
 
-    <main>
-      <div id="court"></div>
-      <div id="labels"></div>
-      <div class="caption" aria-live="polite"><b id="cap-title"></b><span id="cap-text"></span></div>
-      <div class="views" role="group" aria-label="Camera">
-        <button data-view="broadcast">Broadcast</button>
-        <button data-view="baseline">Baseline</button>
-        <button data-view="top">Top</button>
+    <aside class="panel left" id="left">
+      <div class="panel-head">
+        <h2>Beats <span class="count" id="beat-count">0</span></h2>
+        <button class="btn small" data-action="add-beat" title="New beat after this one (B)"><i data-icon="plus"></i>New</button>
       </div>
+      <ol class="cards" id="cards"></ol>
+    </aside>
+
+    <main class="stage-wrap" id="stage-wrap">
+      <div class="stage" id="stage"></div>
+      <div class="labels" id="labels"></div>
+      <div class="caption" id="caption" hidden><b id="cap-title"></b><span id="cap-text"></span></div>
+      <div class="stage-toolbar">
+        <div class="seg" role="group" aria-label="Camera">
+          <button data-view="broadcast">Broadcast</button>
+          <button data-view="baseline">Baseline</button>
+          <button data-view="top">Top</button>
+        </div>
+        <div class="toggles">
+          <button class="chip on" data-toggle="arrows">Arrows</button>
+          <button class="chip on" data-toggle="defense">Defense</button>
+          <button class="chip on" data-toggle="tags">Numbers</button>
+          <div class="pop-wrap">
+            <button class="chip" data-action="colors-pop" id="colors-btn">Colors</button>
+            <div class="pop" id="colors-pop" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="stage-hint" id="hint"></div>
       <div class="legend" aria-hidden="true">
-        <span><svg width="26" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#E0552E" stroke-width="2.5"/></svg>Cut</span>
-        <span><svg width="26" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#E0552E" stroke-width="2.5" stroke-dasharray="5 4"/></svg>Pass</span>
-        <span><svg width="26" height="12"><line x1="0" y1="6" x2="20" y2="6" stroke="#1D1A17" stroke-width="2"/><line x1="21" y1="0" x2="21" y2="12" stroke="#1D1A17" stroke-width="4"/></svg>Screen</span>
+        <span><svg width="24" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#E0552E" stroke-width="2.5"/></svg>Cut</span>
+        <span><svg width="24" height="10"><polyline points="0,5 4,1 8,9 12,1 16,9 20,1 23,5" fill="none" stroke="#E0552E" stroke-width="1.8"/></svg>Dribble</span>
+        <span><svg width="24" height="10"><line x1="0" y1="5" x2="22" y2="5" stroke="#E0552E" stroke-width="2.5" stroke-dasharray="5 4"/></svg>Pass</span>
+        <span><svg width="24" height="12"><line x1="0" y1="6" x2="18" y2="6" stroke="#1D1A17" stroke-width="2"/><line x1="19" y1="0" x2="19" y2="12" stroke="#1D1A17" stroke-width="4"/></svg>Screen</span>
       </div>
     </main>
 
-    <section class="timeline" aria-label="Beats">
-      <div class="controls">
-        <button class="play" id="play" aria-label="Pause"></button>
-        <div class="now"><b id="beat-now">Beat 1</b><span><span id="time">0:00.0</span> / <span id="total"></span></span></div>
-        <div class="shot"><small>SHOT CLOCK</small><span id="clock">24.0</span></div>
-        <button class="btn" id="restart">Restart</button>
-        <button class="btn" id="speed" title="Playback speed">1×</button>
-        <span class="note">Drag to orbit · click a beat to jump to it</span>
+    <aside class="panel right" id="right">
+      <section class="roster">
+        <div class="panel-head"><h2>Players <span class="count" id="size-label"></span></h2></div>
+        <div class="roster-grid" id="roster"></div>
+      </section>
+      <div id="insp" class="insp"></div>
+    </aside>
+
+    <section class="timeline" aria-label="Timeline">
+      <div class="tl-head">
+        <button class="play" data-action="play" id="play-btn" title="Play / pause (Space)"><i data-icon="play"></i></button>
+        <button class="icon-btn" data-action="prev" title="Previous beat ([)"><i data-icon="skip-back"></i></button>
+        <button class="icon-btn" data-action="next" title="Next beat (])"><i data-icon="skip-fwd"></i></button>
+        <div class="now"><b id="beat-now">Start</b><span><span id="time-now">0:00.0</span> / <span id="time-total">0:00</span></span></div>
+        <div class="shot" title="Shot clock"><small>SHOT CLOCK</small><span id="clock">24.0</span></div>
+        <button class="btn small ghost" data-action="speed" id="speed">1×</button>
+        <div class="tl-spacer"></div>
+        <div class="seg small" role="group" aria-label="Timeline view">
+          <button data-tl="beats">Beats</button>
+          <button data-tl="lanes">Lanes</button>
+        </div>
       </div>
-      <div class="track">
-        <div id="beats"></div>
+      <div class="tl-body">
+        <div class="ruler" id="ruler" title="Drag to scrub"></div>
+        <div class="blocks" id="blocks"></div>
+        <div class="lanes" id="lanes" hidden></div>
         <div class="playhead" id="playhead"></div>
       </div>
     </section>
   </div>
-  <script type="module" src="court.js"></script>
+
+  <dialog class="modal wide" id="playbook">
+    <div class="modal-head"><h2>Playbook</h2><button class="icon-btn" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+    <p class="modal-sub">Common half-court sets, each broken into beats. Load one, then make it yours. <button class="btn small" data-action="new">Start a blank play</button></p>
+    <div class="filters" id="pb-filters"></div>
+    <div class="pb-grid" id="pb-grid"></div>
+    <h3 class="pb-mine-h">My plays</h3>
+    <div class="pb-grid" id="pb-mine"></div>
+  </dialog>
+
+  <dialog class="modal small" id="newplay">
+    <form method="dialog" id="newplay-form">
+      <div class="modal-head"><h2>New play</h2><button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="x"></i></button></div>
+      <label class="field"><span>Name</span><input name="name" value="New play" required /></label>
+      <div class="field"><span>Players</span>
+        <div class="seg sizes" role="radiogroup" aria-label="Players">
+          <label><input type="radio" name="size" value="1" />1v1</label>
+          <label><input type="radio" name="size" value="2" />2v2</label>
+          <label><input type="radio" name="size" value="3" />3v3</label>
+          <label><input type="radio" name="size" value="4" />4v4</label>
+          <label><input type="radio" name="size" value="5" checked />5v5</label>
+        </div>
+      </div>
+      <label class="field"><span>Defense</span>
+        <select name="defense"><option value="man">Man to man (follows automatically)</option><option value="hand">Placed by hand</option><option value="none">No defense</option></select>
+      </label>
+      <label class="field"><span>Colors</span><select name="theme" id="np-theme"></select></label>
+      <div class="modal-actions">
+        <button class="btn ghost" type="button" data-close>Cancel</button>
+        <button class="btn primary" value="ok">Create play</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -30,6 +30,15 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 three.js r170 loads from jsDelivr; its OrbitControls addon is vendored in `vendor/`.
 
-## Court Mode (preview)
+## Court Mode
 
-`court/` plays a basketball play beat by beat on a 3D half court: offense numbered 1–5, defense X1–X5 guarding man to man, a ball that's dribbled, passed and shot, and arrows for each beat (cut, pass, screen). Pick team colors, switch cameras, and click a beat to jump to it. It reuses the Dance Studio figures (`js/people.js`) with jerseys, shorts and per-player looks. Plays live in `court/plays.js`.
+`court/` is a play designer for basketball. Plays are a list of beats; on each beat you drag players to where they end up, bend their paths, mark screens, and choose who passes or shoots. Defense can follow man to man automatically (defenders trail cutters and get caught on screens), be placed by hand, or be hidden.
+
+- 1v1 up to 5v5, offense numbered 1–5 and defense X1–X5, each player with their own look
+- Cut, dribble, pass and screen arrows drawn for each beat, a beat timeline with a shot clock, and a Lanes view showing what every player does on every beat
+- Pace per move (even, slow then explode, go right away, wait then go)
+- Flip a whole play left ↔ right
+- Playbook with common sets (pick and roll, horns, give and go, backdoor, Spain, flex, floppy, box inbound) plus saved plays
+- Undo, autosave in the browser, share links, five color sets including NY vs SA jerseys
+
+Code: `court/model.js` (data, sampling, arrows), `court/scene.js` (3D court), `court/app.js` (editor UI), `court/plays.js` (presets), `court/players.js` (basketball figures built on `js/people.js`).
