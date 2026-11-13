@@ -495,3 +495,23 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 @keyframes ld-bounce { from { transform: translateY(-10px); } to { transform: translateY(6px) scale(1.06, .94); } }
 body.ready .stage-loading { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .stage-loading .ld-ball { animation: none; } }
+
+/* Quiz answer motion: choices rise in, your pick presses, the reveal pops (or shakes), the rest fade. */
+.quiz-choice { transition: transform .16s cubic-bezier(.2,.8,.2,1), background-color .22s ease, border-color .22s ease, opacity .25s ease; animation: q-rise .32s cubic-bezier(.2,.8,.2,1) backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
+.quiz-choice.picked { transform: scale(.97); border-color: var(--ink); background: var(--surface-2); }
+.quiz-choice.right { animation: q-pop .45s cubic-bezier(.2,.9,.3,1.25); }
+.quiz-choice.wrong { animation: q-shake .38s ease; }
+.quiz-choice.fade { opacity: .35; }
+.quiz-skip { transition: opacity .2s ease; }
+.quiz-skip.gone { opacity: 0; pointer-events: none; }
+.quiz-result > * { animation: q-rise .36s cubic-bezier(.2,.8,.2,1) backwards; }
+.quiz-result > :nth-child(2) { animation-delay: .07s; }
+.quiz-result > :nth-child(3) { animation-delay: .14s; }
+.quiz-result > :nth-child(4) { animation-delay: .21s; }
+#quiz-next kbd { font: 600 10px var(--font); border: 1px solid rgba(255,255,255,.35); border-radius: 4px; padding: 1px 5px; margin-left: 4px; opacity: .85; }
+@keyframes q-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes q-pop { 0% { transform: scale(1); } 45% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes q-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 45% { transform: translateX(4px); } 70% { transform: translateX(-2px); } }
+@media (prefers-reduced-motion: reduce) { .quiz-choice, .quiz-choice.right, .quiz-choice.wrong, .quiz-result > * { animation: none; } }
+/* Keep Next in reach when the explanation is long. */
+.quiz-card.answered .quiz-acts { position: sticky; bottom: -16px; margin: 0 -18px -16px; padding: 10px 18px 14px; background: var(--surface); border-top: 1px solid var(--line); }

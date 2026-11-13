@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114s';
-import { QUIZ } from './quiz.js?v=20261114s';
+import { CourtScene, W } from './scene.js?v=20261114t';
+import { QUIZ } from './quiz.js?v=20261114t';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114s';
+import { PRESETS } from './plays.js?v=20261114t';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114s';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114s';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114s';
+} from './model.js?v=20261114t';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114t';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114t';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -619,38 +619,72 @@ function showQuestion() {
   const me = play.players.find((p) => p.id === sc.you);
   $('quiz-k').textContent = `${sc.title || ''}${sc.title ? ' · ' : ''}You’re #${me.num}`;
   $('quiz-q').textContent = sc.prompt;
-  $('quiz-choices').innerHTML = sc.choices.map((c, k) => `<button class="quiz-choice" data-choice="${k}"><span class="quiz-letter">${'ABCD'[k]}</span>${esc(c.label)}</button>`).join('');
+  $('quiz-choices').innerHTML = sc.choices.map((c, k) => `<button class="quiz-choice" data-choice="${k}" style="--i:${k}"><span class="quiz-letter">${'ABCD'[k]}</span>${esc(c.label)}</button>`).join('');
   $('quiz-choices').hidden = false;
   $('quiz-result').hidden = true;
+  $('quiz-skip').hidden = false;
   $('quiz-card').classList.remove('answered');
   $('quiz-card').hidden = false;
   $('quiz-banner').hidden = true;
 }
 // k = the choice picked, or -1 for "Not sure, show me" (shows the read without scoring it).
+// Three steps so the moment reads: your pick presses in, the right (and wrong) answer is
+// revealed in place, then the card glides to the corner while the right version replays.
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function answerQuiz(k) {
   const q = ui.quiz;
   if (!q || q.phase !== 'freeze') return;
+  q.phase = 'answer';
   const sc = q.scene, skipped = k < 0, right = sc.choices.find((c) => c.correct);
   const pick = skipped ? right : sc.choices[k];
-  q.phase = 'answer';
-  $('quiz-card').classList.add('answered');
+  const card = $('quiz-card'), slow = !calm();
   if (!skipped) { const scores = quizScores(); scores[sc.id] = !!pick.correct; try { localStorage.setItem(QUIZ_KEY, JSON.stringify(scores)); } catch { /* ignore */ } }
-  document.querySelectorAll('.quiz-choice').forEach((b, i) => { b.disabled = true; b.classList.toggle('right', !!sc.choices[i].correct); b.classList.toggle('wrong', !skipped && i === k && !pick.correct); });
-  $('quiz-skip').hidden = true;
-  $('quiz-verdict').textContent = skipped ? `Here’s the read: ${right.label.toLowerCase()}.` : pick.correct ? 'Right read.' : `Not quite. The read is: ${right.label.toLowerCase()}.`;
-  $('quiz-verdict').className = 'quiz-verdict ' + (skipped ? '' : pick.correct ? 'ok' : 'no');
-  $('quiz-explain').textContent = pick.correct ? right.why : `${pick.why} ${right.why}`;
-  $('quiz-rule').textContent = sc.rule;
-  $('quiz-result').hidden = false;
-  $('quiz-next').textContent = 'Next question';
-  // Show the right version from above: your movement added if the play needs it, slowed down, arrows on.
-  if (sc.answerMoves) { const m = play.beats[sc.freeze[0]].moves; m[sc.you] = { ...(m[sc.you] || {}), ...clone(sc.answerMoves) }; }
-  ui.arrows = true;
-  quizCam('broadcast');
-  ui.speed = 0.75; $('speed').textContent = '0.75×';
-  ui.T = Math.max(0, q.freezeT - 1.2); ui.snap = true;
-  renderQuizList();
-  setPlaying(true);
+  const btns = [...document.querySelectorAll('.quiz-choice')];
+  btns.forEach((b) => { b.disabled = true; });
+  if (!skipped && btns[k]) btns[k].classList.add('picked');
+  $('quiz-skip').classList.add('gone');
+  const reveal = () => {
+    btns.forEach((b, i) => {
+      b.classList.remove('picked');
+      b.classList.toggle('right', !!sc.choices[i].correct);
+      b.classList.toggle('wrong', !skipped && i === k && !pick.correct);
+      b.classList.toggle('fade', !sc.choices[i].correct && i !== k);
+    });
+  };
+  const settle = async () => {
+    if (ui.quiz !== q) return;
+    if (slow) await card.animate([{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '0 10px' }], { duration: 170, easing: 'cubic-bezier(.4,0,1,1)' }).finished;
+    if (ui.quiz !== q) return;
+    $('quiz-skip').hidden = true; $('quiz-skip').classList.remove('gone');
+    $('quiz-verdict').textContent = skipped ? `Here’s the read: ${right.label.toLowerCase()}.` : pick.correct ? 'Right read.' : `Not quite. The read is: ${right.label.toLowerCase()}.`;
+    $('quiz-verdict').className = 'quiz-verdict ' + (skipped ? '' : pick.correct ? 'ok' : 'no');
+    $('quiz-explain').textContent = pick.correct ? right.why : `${pick.why} ${right.why}`;
+    $('quiz-rule').textContent = sc.rule;
+    $('quiz-result').hidden = false;
+    card.classList.add('answered');
+    if (slow) card.animate([{ opacity: 0, translate: '0 16px' }, { opacity: 1, translate: '0 0' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    // Show the right version from above: your movement added if the play needs it, slowed down, arrows on.
+    if (sc.answerMoves) { const m = play.beats[sc.freeze[0]].moves; m[sc.you] = { ...(m[sc.you] || {}), ...clone(sc.answerMoves) }; }
+    ui.arrows = true;
+    quizCam('broadcast');
+    ui.speed = 0.75; $('speed').textContent = '0.75×';
+    ui.T = Math.max(0, q.freezeT - 1.2); ui.snap = true;
+    renderQuizList();
+    setPlaying(true);
+  };
+  if (!slow) { reveal(); settle(); return; }
+  setTimeout(reveal, skipped ? 0 : 170);
+  setTimeout(settle, skipped ? 750 : 1050);
+}
+// Move on: the card drops away, then the next question starts.
+function nextQuiz(random = false) {
+  const q = ui.quiz;
+  if (q && q.phase === 'leaving') return;
+  const go = () => startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1, random));
+  const card = $('quiz-card');
+  if (!q || card.hidden || calm()) { go(); return; }
+  q.phase = 'leaving';
+  card.animate([{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '0 14px' }], { duration: 180, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then((a) => { go(); card.getAnimations().forEach((x) => x.cancel()); });
 }
 const POS_GROUP = { PG: 'Guards', SG: 'Guards', SF: 'Wings', PF: 'Bigs', C: 'Bigs' };
 function quizMeta(x) {
@@ -968,8 +1002,8 @@ document.addEventListener('click', async (e) => {
     case 'look-reset': resetLook(); break;
     case 'quiz-start': store('court.quizIntro', '1'); $('quiz-card').hidden = true; $('quiz-banner').hidden = false; setPlaying(true); break;
     case 'quiz-link': { const url = quizLink(); try { await navigator.clipboard.writeText(url); toast('Quiz link copied'); } catch { prompt('Copy this link', url); } break; }
-    case 'quiz-next': startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1)); break;
-    case 'quiz-random': startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1, true)); break;
+    case 'quiz-next': nextQuiz(); break;
+    case 'quiz-random': nextQuiz(true); break;
     case 'quiz-replay': startQuiz(ui.quiz ? ui.quiz.i : 0); break;
     case 'export': openExport(); break;
     case 'export-go': startExport(); break;
@@ -1026,6 +1060,10 @@ addEventListener('keydown', (e) => {
     if (e.key === ' ') { e.preventDefault(); answerQuiz(-1); return; }
     const n = '1234'.indexOf(e.key) >= 0 ? '1234'.indexOf(e.key) : 'abcd'.indexOf(e.key.toLowerCase());
     if (n >= 0 && n < ui.quiz.scene.choices.length && e.key.length === 1) { answerQuiz(n); return; }
+  }
+  // After the answer: Space or Enter moves on to the next question.
+  if (ui.mode === 'quiz' && ui.quiz && (ui.quiz.phase === 'answer' || ui.quiz.phase === 'leaving') && (e.key === ' ' || (e.key === 'Enter' && tag !== 'BUTTON')) && !e.target.closest('dialog')) {
+    e.preventDefault(); if (tag === 'BUTTON') e.target.blur(); nextQuiz(); return;
   }
   if (e.key === ' ' && !e.target.closest('dialog')) { e.preventDefault(); if (tag === 'BUTTON') e.target.blur(); setPlaying(!ui.playing); }
   else if (e.key === '[') $('app').querySelector('[data-action="prev"]').click();
