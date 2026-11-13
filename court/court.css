@@ -475,3 +475,5 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 #export.quiz-export .choices:first-of-type { display: none; }
 .app.quizzing .stage canvas { cursor: grab; }
 .app.quizzing .stage canvas:active { cursor: grabbing; }
+.look-reset { position: absolute; right: 14px; top: 64px; box-shadow: var(--shadow); }
+.app.recording .look-reset { display: none; }

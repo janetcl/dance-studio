@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261114l';
-import { QUIZ } from './quiz.js?v=20261114l';
+import { CourtScene, W } from './scene.js?v=20261114m';
+import { QUIZ } from './quiz.js?v=20261114m';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261114l';
+import { PRESETS } from './plays.js?v=20261114m';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261114l';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114l';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261114l';
+} from './model.js?v=20261114m';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114m';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114m';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -340,23 +340,32 @@ function renderTimeline() {
   }
 }
 
-// Drag to look around in Your eyes; double-click to look back at the play.
+// Drag to look around in Your eyes. A double-click (without dragging) or Reset view looks back at the play.
 {
-  let drag = null;
+  let drag = null, lastMoved = 0;
   addEventListener('pointerdown', (e) => {
     if (ui.mode !== 'quiz' || !ui.quiz || ui.quiz.cam !== 'pov' || ui.rec || e.button !== 0) return;
     if (!e.target.closest || !e.target.closest('#stage')) return;
-    drag = { x: e.clientX, y: e.clientY, yaw: ui.quiz.yaw || 0, pitch: ui.quiz.pitch || 0 };
+    drag = { x: e.clientX, y: e.clientY, yaw: ui.quiz.yaw || 0, pitch: ui.quiz.pitch || 0, moved: 0 };
     e.stopPropagation();
   }, true);
   addEventListener('pointermove', (e) => {
     if (!drag || !ui.quiz) return;
+    drag.moved = Math.max(drag.moved, Math.hypot(e.clientX - drag.x, e.clientY - drag.y));
     ui.quiz.yaw = drag.yaw - (e.clientX - drag.x) * 0.006;
     ui.quiz.pitch = Math.max(-0.7, Math.min(0.7, drag.pitch + (e.clientY - drag.y) * 0.004));
+    $('look-reset').hidden = false;
   }, true);
-  addEventListener('pointerup', () => { drag = null; }, true);
-  addEventListener('dblclick', (e) => { if (ui.mode === 'quiz' && ui.quiz && ui.quiz.cam === 'pov' && e.target.closest && e.target.closest('#stage')) { ui.quiz.yaw = 0; ui.quiz.pitch = 0; } }, true);
+  const end = () => { if (drag) lastMoved = drag.moved; drag = null; };
+  addEventListener('pointerup', end, true);
+  addEventListener('pointercancel', end, true);
+  addEventListener('dblclick', (e) => {
+    if (ui.mode !== 'quiz' || !ui.quiz || ui.quiz.cam !== 'pov' || !e.target.closest || !e.target.closest('#stage')) return;
+    if (lastMoved > 6) return; // two quick drags are not a double-click
+    resetLook();
+  }, true);
 }
+function resetLook() { if (!ui.quiz) return; ui.quiz.yaw = 0; ui.quiz.pitch = 0; $('look-reset').hidden = true; }
 
 // ---------- Question maker ----------
 function openMaker() {
@@ -460,6 +469,7 @@ function startQuiz(i) {
   const { starts } = timing(play);
   const freezeT = starts[sc.freeze[0]] + play.beats[sc.freeze[0]].dur * sc.freeze[1];
   ui.quiz = { i, scene: sc, freezeT, phase: 'play', cam: 'pov', look: null, yaw: 0, pitch: 0 };
+  $('look-reset').hidden = true;
   ui.sel = sc.you; ui.arrows = false; ui.T = 0; ui.snap = true; ui.endHold = 0;
   ui.speed = 1; $('speed').textContent = '1×';
   const me = play.players.find((p) => p.id === sc.you);
@@ -491,6 +501,7 @@ function quizCam(mode, { silent = false } = {}) {
   if (!ui.quiz) return;
   ui.quiz.cam = mode;
   if (mode === 'pov') povOn(); else { povOff(); scene.setView(mode); }
+  $('look-reset').hidden = mode !== 'pov' || !(ui.quiz.yaw || ui.quiz.pitch);
   markView();
   document.querySelectorAll('[data-qcam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.qcam === mode)));
   if (!silent) ui.snap = false;
@@ -911,6 +922,7 @@ document.addEventListener('click', async (e) => {
     case 'maker-save': saveMaker(); break;
     case 'share-q': { const q = myQuestions().find((x) => x.id === t.dataset.id); if (q) shareQuestion(q); break; }
     case 'del-q': { const list = myQuestions(); const q = list.find((x) => x.id === t.dataset.id); if (!q) break; saveMyQuestions(list.filter((x) => x.id !== q.id)); renderQuizList(); toast(`Deleted “${q.title}”`, { label: 'Undo', run: () => { saveMyQuestions([...myQuestions(), q]); renderQuizList(); } }); break; }
+    case 'look-reset': resetLook(); break;
     case 'quiz-start': store('court.quizIntro', '1'); $('quiz-card').hidden = true; $('quiz-banner').hidden = false; setPlaying(true); break;
     case 'quiz-link': { const url = quizLink(); try { await navigator.clipboard.writeText(url); toast('Quiz link copied'); } catch { prompt('Copy this link', url); } break; }
     case 'quiz-next': startQuiz(nextQuizIndex(ui.quiz ? ui.quiz.i : -1)); break;
