@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261115q';
-import { QUIZ } from './quiz.js?v=20261115q';
+import { CourtScene, W } from './scene.js?v=20261115r';
+import { QUIZ } from './quiz.js?v=20261115r';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261115q';
+import { PRESETS } from './plays.js?v=20261115r';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261115q';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115q';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261115q';
+} from './model.js?v=20261115r';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115r';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115r';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1039,8 +1039,22 @@ function frame(nowMs) {
   $('time-now').textContent = fmt(ui.T);
   $('clock').textContent = Math.max(0, 24 - ui.T).toFixed(1);
   if (ui.mode === 'watch') { const pf = $('pl-fill'); if (pf) pf.style.width = `${Math.min(100, (ui.T / total) * 100)}%`; }
+  { const k = ui.mode + ':' + (ui.mode === 'quiz' && ui.quiz ? ui.quiz.i : ''); if (k !== urlKey) { urlKey = k; syncUrl(); } }
   if (!window.__ff) { window.__ff = performance.now(); performance.mark('court:first-frame'); document.body.classList.add('ready'); }
   if (!ui.manual) requestAnimationFrame(frame);
+}
+
+// Keep the address bar in step with the mode, so a copied link opens where you are.
+let urlKey = '';
+function syncUrl() {
+  if (ui.rec) return;
+  const u = new URL(location.href);
+  for (const k of ['mode', 'q', 'autoplay']) u.searchParams.delete(k);
+  if (ui.mode === 'quiz') { u.searchParams.set('mode', 'quiz'); if (ui.quiz) u.searchParams.set('q', String(ui.quiz.i + 1)); }
+  else if (ui.mode === 'watch') u.searchParams.set('mode', 'watch');
+  if (ui.mode !== 'quiz' && u.hash.startsWith('#qz=')) u.hash = '';
+  const next = u.pathname + u.search + u.hash;
+  if (next !== location.pathname + location.search + location.hash) history.replaceState(null, '', next);
 }
 
 // ---------- Events ----------
