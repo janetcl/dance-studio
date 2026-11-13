@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261113r';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113r';
+import { Player } from './players.js?v=20261113t';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113t';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -160,8 +160,10 @@ function drawMarks(g, marks, selected, accent) {
 
 export const VIEWS = {
   broadcast: { pos: [0, 9.8, 13.2], target: [0, 0.6, -1.6] },
-  baseline: { pos: [0, 4.6, -15.5], target: [0, 1, 0.5] },
-  top: { pos: [0, 21, 0.4], target: [0, 0, 0] },
+  // Up behind the backboard, high enough to see over it, with room above the rim.
+  baseline: { pos: [1.2, 8.8, -15.6], target: [0, 0.4, 2.6] },
+  // Straight down over the half court, pulled back so the basket and the half-court line both fit.
+  top: { pos: [0, 27, -2.0], target: [0, 0, -2.2] },
 };
 
 export class CourtScene {
@@ -322,12 +324,14 @@ export class CourtScene {
     g.add(this.net);
     // Support arm, pole and base pad.
     const dark = new THREE.MeshStandardMaterial({ color: '#2A2724', roughness: 0.5, metalness: 0.2 });
+    const padBase = pad.clone();
+    this.stanchionMats = [dark, padBase];
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 1.4), dark);
     arm.position.set(0, 3.3, boardZ - 0.72);
     const pole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.4, 0.22), dark);
     pole.position.set(0, 1.7, boardZ - 1.4);
     pole.castShadow = true;
-    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.6), pad);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 1.6), padBase);
     base.position.set(0, 0.25, boardZ - 1.7);
     g.add(arm, pole, base);
     scene.add(g);
@@ -710,6 +714,9 @@ export class CourtScene {
 
   setView(name) {
     const v = VIEWS[name] || VIEWS.broadcast;
+    // From the baseline the stanchion would block the play, so make it see-through.
+    const ghost = name === 'baseline';
+    for (const m of this.stanchionMats || []) { m.transparent = ghost; m.opacity = ghost ? 0.18 : 1; m.depthWrite = !ghost; m.needsUpdate = true; }
     this.camera.position.set(...v.pos);
     this.controls.target.set(...v.target);
     this.controls.update();
