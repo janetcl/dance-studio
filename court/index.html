@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261113g" />
+  <link rel="stylesheet" href="court.css?v=20261113h" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
@@ -74,7 +74,6 @@
           <button class="chip on" data-toggle="arrows">Arrows</button>
           <button class="chip on" data-toggle="defense">Defense</button>
           <button class="chip on" data-toggle="tags">Numbers</button>
-          <button class="chip" data-toggle="commentary" title="Play-by-play from your browser’s voice">Commentary</button>
           <div class="pop-wrap">
             <button class="chip" data-action="colors-pop" id="colors-btn">Teams</button>
             <div class="pop" id="colors-pop" hidden></div>
@@ -186,7 +185,8 @@
         <div class="seg sizes" role="radiogroup" aria-label="Camera">
           <label><input type="radio" name="camera" value="static" checked />Static (this view)</label>
           <label><input type="radio" name="camera" value="cinematic" />Cinematic</label>
-        </div>
+          <p class="help" id="camera-help">Static keeps the camera exactly where it is now, like a coach's view of the whole play.</p>
+      </div>
       </div>
       <label class="row field-check"><input type="checkbox" name="captions" checked /> Beat captions</label>
       <label class="row field-check"><input type="checkbox" name="numbers" checked /> Player numbers</label>
@@ -199,6 +199,6 @@
   </dialog>
   <div class="rec-status" id="rec-status" hidden role="status"><span class="rec-dot"></span>Recording <span id="rec-time"></span><button class="btn small" data-action="export-cancel">Cancel</button></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261113g"></script>
+  <script type="module" src="app.js?v=20261113h"></script>
 </body>
 </html>

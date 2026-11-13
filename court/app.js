@@ -1,14 +1,14 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene } from './scene.js?v=20261113g';
-import { PRESETS } from './plays.js?v=20261113g';
+import { CourtScene } from './scene.js?v=20261113h';
+import { PRESETS } from './plays.js?v=20261113h';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113g';
-import { Recorder, pickMime, cinematicCamera } from './recorder.js?v=20261113g';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113g';
+} from './model.js?v=20261113h';
+import { Recorder, pickMime, cinematicCamera } from './recorder.js?v=20261113h';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113h';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -492,7 +492,6 @@ function frame(nowMs) {
     const b = ui.rec.started ? play.beats[f.i] : null;
     ui.rec.recorder.frame({ caption: b ? (b.text || beatSummary(f.i)) : '', beatLabel: b ? `Beat ${f.i + 1} · ${b.name}` : '', kits: teamsOf(play), elapsed: ui.rec.t });
   }
-  if (ui.commentary && ui.playing) commentate(f);
   ui.snap = false;
   $('playhead').style.left = `calc(${(ui.T / total) * 100}% - 1px)`;
   $('time-now').textContent = fmt(ui.T);
@@ -598,6 +597,12 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.name === 'camera') {
+    $('camera-help').textContent = t.value === 'cinematic'
+      ? 'Cinematic starts straight above the court, sweeps down to a broadcast angle as the play begins, then slowly circles while it runs.'
+      : "Static keeps the camera exactly where it is now, like a coach's view of the whole play.";
+    return;
+  }
   if (t.dataset.courtLabel !== undefined) { const v = t.value.trim(); lookChange(() => { play.court = play.court || {}; if (v) play.court.label = v; else delete play.court.label; }); if (!$('court-pop').hidden) openCourtPop(); return; }
   if (t.dataset.act === 'dribble') { mutate(() => { play.beats[ui.beat].dribble = t.checked; }); return; }
   if (t.dataset.field === 'defense') { mutate(() => { play.defense = t.value; }); return; }
@@ -794,47 +799,6 @@ async function finishExport() {
   toast(`Saved ${a.download}`);
 }
 function cancelExport() { if (!ui.rec) return; ui.rec.recorder.cancel(); restoreAfterExport(); toast('Recording cancelled'); }
-
-// ---------- Commentary (the browser's built-in voice) ----------
-const POS_NAME = { PG: 'the point guard', SG: 'the two guard', SF: 'the three', PF: 'the four', C: 'the big man' };
-const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
-let spoke = { beat: -1, made: false, T: -1 };
-function say(text, { interrupt = true } = {}) {
-  if (!('speechSynthesis' in window)) return;
-  if (interrupt) speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  const voices = speechSynthesis.getVoices();
-  u.voice = voices.find((v) => /en-US/i.test(v.lang) && /(Daniel|Alex|Fred|Google US English|Guy|Davis|Aaron)/i.test(v.name)) || voices.find((v) => /^en/i.test(v.lang)) || null;
-  u.rate = 1.12; u.pitch = 0.92; u.volume = 1;
-  speechSynthesis.speak(u);
-}
-function callBeat(i) {
-  const b = play.beats[i];
-  const name = (id) => { const p = playerOf(id); if (!p) return ''; return Math.random() < 0.35 && p.side === 'O' && POS_NAME[p.pos] ? POS_NAME[p.pos] : 'number ' + p.num; };
-  const bits = [];
-  const ids = play.players.filter((p) => p.side === 'O').map((p) => p.id);
-  for (const id of ids) {
-    const a = actionOf(play, i, id);
-    if (a === 'screen') bits.push(pickOne([`${name(id)} sets the pick`, `${name(id)} with the screen`, `big screen from ${name(id)}`]));
-  }
-  for (const id of ids) {
-    const a = actionOf(play, i, id);
-    if (a === 'cut') bits.push(pickOne([`${name(id)} cuts hard`, `here comes ${name(id)}`, `${name(id)} on the move`]));
-    if (a === 'dribble') bits.push(pickOne([`${name(id)} attacks`, `${name(id)} puts it on the floor`, `${name(id)} gets downhill`]));
-  }
-  const h = holderAt(play, i), ev = b.ball;
-  if (ev && h && ev.kind === 'pass') bits.push(pickOne([`${name(h)} finds ${name(ev.to)}`, `${name(h)} swings it to ${name(ev.to)}`, `nice feed to ${name(ev.to)}`]));
-  if (ev && h && ev.kind === 'shot') bits.push(pickOne([`${name(h)} rises up`, `${name(h)} lets it fly`, `${name(h)} for the shot`]));
-  if (!bits.length) return i === 0 ? pickOne(['Here we go.', `${name(h || 'o1')} brings it up.`, 'They set it up.']) : '';
-  return bits.slice(0, 3).join('... ') + (ev && ev.kind === 'shot' ? '...' : '.');
-}
-function commentate(f) {
-  if (ui.T < spoke.T - 0.5) spoke = { beat: -1, made: false, T: ui.T };
-  spoke.T = ui.T;
-  if (f.i !== spoke.beat) { spoke.beat = f.i; spoke.made = false; const line = callBeat(f.i); if (line) say(line); }
-  const ev = f.ev;
-  if (ev && ev.kind === 'shot' && !spoke.made && f.t > ev.t1) { spoke.made = true; say(pickOne(['Bang!', 'Count it!', 'Got it!', 'Nothing but net!', 'Money!']), { interrupt: false }); }
-}
 
 // ---------- First-visit tour ----------
 const TOUR = [
