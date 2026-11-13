@@ -2,7 +2,7 @@
 // Shorthand per beat: m = moves (player number → points, the last one is where they
 // end up), s = screeners, pc = pace, b = ball ['pass', to, t0, t1] or ['shot', t0, t1],
 // dr = dribble in place.
-import { newPlay, uid, validate } from './model.js?v=20261113t';
+import { newPlay, uid, validate } from './model.js?v=20261113u';
 
 function def({ id, name, cat, blurb, start, ball = 1, beats, size = 5, defense = 'man', zone, level }) {
   const p = newPlay({ name, size, defense });

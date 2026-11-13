@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261113t';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113t';
+import { Player } from './players.js?v=20261113u';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113u';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -161,7 +161,7 @@ function drawMarks(g, marks, selected, accent) {
 export const VIEWS = {
   broadcast: { pos: [0, 9.8, 13.2], target: [0, 0.6, -1.6] },
   // Up behind the backboard, high enough to see over it, with room above the rim.
-  baseline: { pos: [1.2, 8.8, -15.6], target: [0, 0.4, 2.6] },
+  baseline: { pos: [0, 9.8, -17.6], target: [0, 0.6, 2.2] },
   // Straight down over the half court, pulled back so the basket and the half-court line both fit.
   top: { pos: [0, 27, -2.0], target: [0, 0, -2.2] },
 };
