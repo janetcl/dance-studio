@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261113z';
-import { QUIZ } from './quiz.js?v=20261113z';
+import { CourtScene, W } from './scene.js?v=20261114a';
+import { QUIZ } from './quiz.js?v=20261114a';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261113z';
+import { PRESETS } from './plays.js?v=20261114a';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113z';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113z';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113z';
+} from './model.js?v=20261114a';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261114a';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261114a';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -342,14 +342,14 @@ function renderTimeline() {
 // ---------- Quiz: one decision, seen through one player's eyes ----------
 const QUIZ_KEY = 'court.quiz';
 const quizScores = () => { try { return JSON.parse(localStorage.getItem(QUIZ_KEY) || '{}'); } catch { return {}; } };
-function enterQuiz() {
+function enterQuiz(start = 0) {
   if (ui.mode === 'watch') exitWatch();
   savePlay(play);
   ui.editPlay = clone(play);
   ui.mode = 'quiz';
   ui.saved = { loop: ui.loop, arrows: ui.arrows };
   ui.loop = false;
-  startQuiz(0);
+  startQuiz(start);
 }
 function exitQuiz() {
   if (ui.mode !== 'quiz') return;
@@ -383,7 +383,24 @@ function startQuiz(i) {
   $('quiz-card').hidden = true;
   renderAll();
   quizCam('pov', { silent: true });
+  if (!store('court.quizIntro')) { showQuizIntro(); return; }
   setPlaying(true);
+}
+function showQuizIntro() {
+  $('quiz-k').textContent = 'How the quiz works';
+  $('quiz-q').textContent = 'You play one position. The play runs from that player’s eyes, then freezes at a decision. Pick what they should do, then watch the right version from above with the reason why.';
+  $('quiz-choices').innerHTML = '<button class="btn primary" data-action="quiz-start">Start question 1</button>';
+  $('quiz-choices').hidden = false;
+  $('quiz-result').hidden = true;
+  $('quiz-card').classList.remove('answered');
+  $('quiz-card').hidden = false;
+  $('quiz-banner').hidden = true;
+}
+function quizLink() {
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set('mode', 'quiz');
+  if (ui.quiz && ui.quiz.i > 0) u.searchParams.set('q', String(ui.quiz.i + 1));
+  return u.toString();
 }
 function quizCam(mode, { silent = false } = {}) {
   if (!ui.quiz) return;
@@ -761,6 +778,8 @@ document.addEventListener('click', async (e) => {
     case 'theme': lookChange(() => { play.theme = t.dataset.v; delete play.teams; }); closePops(); break;
     case 'colors-pop': togglePop(); break;
     case 'playbook': openPlaybook(); break;
+    case 'quiz-start': store('court.quizIntro', '1'); $('quiz-card').hidden = true; $('quiz-banner').hidden = false; setPlaying(true); break;
+    case 'quiz-link': { const url = quizLink(); try { await navigator.clipboard.writeText(url); toast('Quiz link copied'); } catch { prompt('Copy this link', url); } break; }
     case 'quiz-next': startQuiz(ui.quiz ? ui.quiz.i + 1 : 0); break;
     case 'quiz-replay': startQuiz(ui.quiz ? ui.quiz.i : 0); break;
     case 'export': openExport(); break;
@@ -1006,6 +1025,7 @@ const TOUR = [
   { sel: '[data-mode="watch"]', title: 'Just want to watch?', text: 'Watch mode runs through the whole playbook, one play after another, with the list of plays on the left.' },
   { sel: '[data-action="playbook"]', title: 'The Playbook', text: 'Over two dozen plays, from Beginner to Advanced. Open one and it becomes your own copy to change.' },
   { sel: '#cards', title: 'Make a change', text: 'In Edit, pick a beat on the left, then drag a player on the court to where they should end up. Select a player to set screens, passes and shots.' },
+  { sel: '[data-mode="quiz"]', title: 'Test yourself', text: 'Quiz puts you in one player’s shoes. The play runs from their eyes, freezes, and you pick what they should do.' },
   { sel: '#colors-btn', title: 'Make it yours', text: 'Pick the teams and the court, from a New York park to a big arena. Flip mirrors the whole play left to right.', next: 'Start playing' },
 ];
 let tourAt = -1;
@@ -1068,7 +1088,9 @@ async function boot() {
   ui.beat = -1; ui.T = 0;
   renderAll();
   setPlaying(new URLSearchParams(location.search).get('autoplay') === '1');
-  if (new URLSearchParams(location.search).get('mode') === 'watch') enterWatch();
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('mode') === 'quiz') { enterQuiz(Math.max(0, (Number(qp.get('q')) || 1) - 1)); }
+  else if (qp.get('mode') === 'watch') enterWatch();
   else if (!store('court.toured') && !new URLSearchParams(location.search).has('notour')) setTimeout(startTour, 700);
   requestAnimationFrame(frame);
 }

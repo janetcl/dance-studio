@@ -443,3 +443,5 @@ body[data-tags="floor"] .tag { transform-origin: 50% 100%; border-radius: 50%; m
 .quiz-card.answered .quiz-choice:not(.right):not(.wrong) { display: none; }
 .quiz-card.answered .quiz-acts { flex-wrap: wrap; }
 @media (max-width: 900px) { .quiz-card.answered { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 55%; } }
+.quiz-choices .btn.primary { grid-column: 1 / -1; justify-self: start; height: 40px; }
+.quiz-side .panel-head .btn i[data-icon] { width: 14px; height: 14px; }
