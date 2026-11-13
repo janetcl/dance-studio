@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Court Mode · Dance Studio</title>
+  <title>Cutline · Basketball plays in 3D</title>
   <meta name="description" content="Draw up basketball plays beat by beat and watch them run on a 3D half court." />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="Court Mode · Dance Studio" />
+  <meta property="og:title" content="Cutline · Basketball plays in 3D" />
   <meta property="og:description" content="Draw basketball plays beat by beat and watch them run on a 3D court. 25 plays, man or zone defense, from a New York park to a big arena." />
   <meta property="og:url" content="https://janetlee.me/dance-studio/court/" />
   <meta property="og:image" content="https://janetlee.me/dance-studio/court/og.jpg" />
@@ -14,31 +14,31 @@
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://janetlee.me/dance-studio/court/og.jpg" />
-  <link rel="icon" href="../assets/icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="logo.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
-  <link rel="stylesheet" href="court.css?v=20261115s" />
+  <link rel="stylesheet" href="court.css?v=20261115t" />
   <script type="importmap">
     { "imports": { "three": "../vendor/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
   <link rel="modulepreload" href="../vendor/three.module.min.js" />
-  <link rel="modulepreload" href="app.js?v=20261115s" />
-  <link rel="modulepreload" href="scene.js?v=20261115s" />
-  <link rel="modulepreload" href="model.js?v=20261115s" />
-  <link rel="modulepreload" href="players.js?v=20261115s" />
-  <link rel="modulepreload" href="../js/people.js?v=20261115s" />
+  <link rel="modulepreload" href="app.js?v=20261115t" />
+  <link rel="modulepreload" href="scene.js?v=20261115t" />
+  <link rel="modulepreload" href="model.js?v=20261115t" />
+  <link rel="modulepreload" href="players.js?v=20261115t" />
+  <link rel="modulepreload" href="../js/people.js?v=20261115t" />
   <link rel="modulepreload" href="../vendor/OrbitControls.js" />
-  <link rel="modulepreload" href="plays.js?v=20261115s" />
-  <link rel="modulepreload" href="quiz.js?v=20261115s" />
-  <link rel="modulepreload" href="recorder.js?v=20261115s" />
-  <link rel="modulepreload" href="../js/icons.js?v=20261115s" />
+  <link rel="modulepreload" href="plays.js?v=20261115t" />
+  <link rel="modulepreload" href="quiz.js?v=20261115t" />
+  <link rel="modulepreload" href="recorder.js?v=20261115t" />
+  <link rel="modulepreload" href="../js/icons.js?v=20261115t" />
 </head>
 <body>
   <div class="app" id="app">
     <header class="topbar">
-      <a class="brand" href="../" title="Dance Studio"><img src="../assets/icon.svg" alt="" width="26" height="26" /><span class="hide-sm">Dance Studio</span></a>
-      <nav class="modes hide-xs" aria-label="Mode"><a href="../">Dance</a><a href="./" aria-current="page">Court</a></nav>
+      <a class="brand" href="./" title="Cutline"><img src="logo.svg" alt="" width="28" height="28" /><span class="hide-sm">Cutline</span></a>
+      <nav class="modes hide-xs" aria-label="Mode"><a href="../">Dance</a><a href="./" aria-current="page">Cutline</a></nav>
       <div class="seg mode-seg" role="group" aria-label="Edit or watch"><button data-mode="edit">Edit</button><button data-mode="watch">Watch</button><button data-mode="quiz">Quiz</button></div>
       <input id="title" class="title-input" spellcheck="false" aria-label="Play name" />
       <span id="saved" class="saved">Saved</span>
@@ -353,6 +353,6 @@
     </form>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261115s"></script>
+  <script type="module" src="app.js?v=20261115t"></script>
 </body>
 </html>

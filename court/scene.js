@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261115s';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115s';
+import { Player } from './players.js?v=20261115t';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115t';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -1098,7 +1098,7 @@ export class CourtScene {
       const c = document.createElement('canvas'); c.width = 2048; c.height = 64; const x = c.getContext('2d');
       x.fillStyle = bg; x.fillRect(0, 0, 2048, 64);
       x.font = '800 40px Geist, Arial Black, sans-serif'; x.textBaseline = 'middle'; x.fillStyle = fg;
-      for (let i = 0; i < 6; i++) { x.fillText('COURT MODE', 30 + i * 340, 34); x.fillStyle = i % 2 ? fg : '#FFFFFF'; }
+      for (let i = 0; i < 6; i++) { x.fillText('CUTLINE', 60 + i * 340, 34); x.fillStyle = i % 2 ? fg : '#FFFFFF'; }
       x.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 0; i < 2048; i += 4) x.fillRect(i, 0, 1, 64);
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.repeat.set(5, 1); return t;
     };

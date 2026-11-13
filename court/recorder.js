@@ -2,7 +2,7 @@
 // onto a 1280×720 canvas with the number tags and beat captions drawn on top, and
 // MediaRecorder turns that canvas into an MP4 (or WebM where MP4 isn't supported).
 import * as THREE from 'three';
-import { fitCamera, fitBox } from './scene.js?v=20261115s';
+import { fitCamera, fitBox } from './scene.js?v=20261115t';
 
 // Overlays are laid out on a 1280×720 grid and scaled to the chosen size.
 const W = 1280, H = 720;
@@ -85,7 +85,7 @@ export class Recorder {
   // square; centered at yAt on vertical quiz Shorts.
   badge(g, W, H, vertical, yAt) {
     g.save();
-    const name = 'Court Mode', url = 'janetlee.me/dance-studio/court';
+    const name = 'Cutline', url = 'janetlee.me/dance-studio/court';
     g.font = '700 15px Geist, Inter, system-ui, sans-serif'; const nw = g.measureText(name).width;
     g.font = '500 11.5px Geist, Inter, system-ui, sans-serif'; const uw = g.measureText(url).width;
     const r = 10, bw = r * 2 + 8 + Math.max(nw, uw);
@@ -138,7 +138,7 @@ export class Recorder {
     g.save();
     g.textAlign = 'center'; g.textBaseline = 'alphabetic';
     g.font = '600 13px Geist, Inter, system-ui, sans-serif';
-    const brand = 'COURT MODE  ·  janetlee.me/dance-studio/court';
+    const brand = 'CUTLINE  ·  janetlee.me/dance-studio/court';
     const bw = g.measureText(brand).width;
     ballMark(g, (W - bw) / 2 - 14, 118 - 4.5, 8);
     g.fillStyle = 'rgba(244,236,226,.62)'; g.fillText(brand, W / 2 + 4, 118);
@@ -321,15 +321,16 @@ export class Recorder {
 }
 
 // The cinematic camera: straight down from above, sweep into a low broadcast angle, then a slow orbit.
+// The Cutline mark: a ball whose seam runs out into an arrow (light arrow, for video).
+const LOGO = { seams: new Path2D('M30 10v48M6 34h48M13 17c8 7 8 27 0 34'), cut: new Path2D('M44 52c-6-8-6-20 4-30l8-8'), head: new Path2D('M49 12l8 2-2 8') };
 function ballMark(g, cx, cy, r) {
-  const grd = g.createRadialGradient(cx - r / 3, cy - r / 3, 1, cx, cy, r);
-  grd.addColorStop(0, '#F7A15C'); grd.addColorStop(1, '#D6561C');
-  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = grd; g.fill();
-  g.save(); g.shadowBlur = 0; g.strokeStyle = 'rgba(40,20,10,.85)'; g.lineWidth = Math.max(1, r / 9);
-  g.beginPath(); g.moveTo(cx - r, cy); g.lineTo(cx + r, cy); g.stroke();
-  g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx, cy + r); g.stroke();
-  g.beginPath(); g.arc(cx - r * 1.05, cy, r * 0.75, -0.95, 0.95); g.stroke();
-  g.beginPath(); g.arc(cx + r * 1.05, cy, r * 0.75, Math.PI - 0.95, Math.PI + 0.95); g.stroke();
+  g.save();
+  const s = (r * 2.3) / 64;
+  g.translate(cx - 30 * s, cy - 34 * s); g.scale(s, s);
+  g.beginPath(); g.arc(30, 34, 24, 0, Math.PI * 2); g.fillStyle = '#E0552E'; g.fill();
+  g.shadowBlur = 0; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.strokeStyle = '#17181B'; g.lineWidth = 2.6; g.stroke(LOGO.seams);
+  g.strokeStyle = '#F4F4F0'; g.lineWidth = 3.4; g.stroke(LOGO.cut); g.stroke(LOGO.head);
   g.restore();
 }
 

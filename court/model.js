@@ -1,4 +1,4 @@
-// Court Mode data model. Positions are in court units: tenths of a foot on a
+// Cutline data model. Positions are in court units: tenths of a foot on a
 // 50 × 47 ft half court. u runs across (0–500, left to right facing the basket),
 // v runs out from the baseline (0) to half court (470).
 //
@@ -388,7 +388,7 @@ export function flipPlay(p) {
 
 // ---------- Validation, storage, sharing ----------
 export function validate(p) {
-  if (!p || !Array.isArray(p.beats) || !Array.isArray(p.players)) throw new Error('Not a Court Mode play');
+  if (!p || !Array.isArray(p.beats) || !Array.isArray(p.players)) throw new Error('Not a Cutline play');
   p.v = 1;
   p.id = p.id || uid();
   p.size = p.size || p.players.filter((x) => x.side === 'O').length;

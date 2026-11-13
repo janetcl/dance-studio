@@ -1,16 +1,16 @@
-// Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
+// Cutline editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261115s';
-import { QUIZ } from './quiz.js?v=20261115s';
+import { CourtScene, W } from './scene.js?v=20261115t';
+import { QUIZ } from './quiz.js?v=20261115t';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261115s';
+import { PRESETS } from './plays.js?v=20261115t';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261115s';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115s';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261115s';
+} from './model.js?v=20261115t';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115t';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115t';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -922,7 +922,7 @@ function renderSide() { renderRoster(); renderInspector(); renderCards(); }
 let lastMarksKey = '';
 function renderAll({ light = false } = {}) {
   $('title').value = play.name;
-  document.title = `${play.name} · Court Mode`;
+  document.title = `${play.name} · Cutline`;
   scene.setPlayers(play.players);
   scene.setGuards(play.players.map((p) => ({ id: p.id, guard: play.defense === 'man' ? p.guard : null })));
   const t = teamsOf(play);
@@ -1485,7 +1485,7 @@ function cancelExport() { if (!ui.rec) return; ui.rec.recorder.cancel(); restore
 
 // ---------- First-visit tour ----------
 const TOUR = [
-  { title: 'Welcome to Court Mode', text: 'Basketball plays, one beat at a time. Each beat is one step of the play: a cut, a screen, a pass or a shot. Watch the ready-made plays, or draw your own.', next: 'Show me around' },
+  { title: 'Welcome to Cutline', text: 'Basketball plays, one beat at a time. Each beat is one step of the play: a cut, a screen, a pass or a shot. Watch the ready-made plays, or draw your own.', next: 'Show me around' },
   { sel: '#play-btn', title: 'Press play', text: 'Watch this play run. The orange arrows show who moves on each beat, and the bar along the bottom is the timeline.' },
   { sel: '[data-mode="watch"]', title: 'Just want to watch?', text: 'Watch mode runs through the whole playbook, one play after another, with the list of plays on the left.' },
   { sel: '[data-action="playbook"]', title: 'The Playbook', text: 'Over two dozen plays, from Beginner to Advanced. Open one and it becomes your own copy to change.' },
