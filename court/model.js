@@ -43,7 +43,7 @@ export function courtLook(play) {
     lines: c.lines || (c.floor === 'blacktop' ? '#FFFFFF' : '#FFFFFF'),
     border: c.border || paint || '#2B2A28',
     label: c.label || '',
-    scene: ['arena', 'park'].includes(c.scene) ? c.scene : 'studio',
+    scene: ['arena', 'park', 'garden'].includes(c.scene) ? c.scene : 'studio',
   };
 }
 

@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261113b';
-import { THEMES, FLOORS, RIM as RIM_UV } from './model.js?v=20261113b';
+import { Player } from './players.js?v=20261113c';
+import { THEMES, FLOORS, RIM as RIM_UV } from './model.js?v=20261113c';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -18,7 +18,7 @@ function courtTexture(look) {
   const g = c.getContext('2d');
   const X = (u) => (u - U0) * S, Y = (v) => (v - V0) * S;
   const fl = FLOORS[look.floor] || FLOORS.maple;
-  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'park' ? '#8E8C86' : '#2B2A28';
+  g.fillStyle = look.scene === 'arena' ? '#121316' : look.scene === 'garden' ? '#1A1B20' : look.scene === 'park' ? '#8E8C86' : '#2B2A28';
   g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = look.border;
   g.fillRect(X(-30), Y(-60), 560 * S, 560 * S);
@@ -341,9 +341,10 @@ export class CourtScene {
     this.netMat.color.set(type === 'park' ? '#A9AEB3' : '#F6F3EC');
     this.netMat.metalness = type === 'park' ? 0.85 : 0;
     this.netMat.roughness = type === 'park' ? 0.35 : 0.95;
+    const rnd = (() => { let x = 7; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
+    if (type === 'garden') { this.buildGarden(rnd); return; }
     if (type !== 'park') return;
     const g = (this.surround = new THREE.Group());
-    const rnd = (() => { let x = 7; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
     // Sky dome
     const sky = new THREE.Mesh(new THREE.SphereGeometry(160, 32, 16), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false }));
     const cols = [], pa = sky.geometry.attributes.position;
@@ -425,6 +426,82 @@ export class CourtScene {
     this.scene.add(g);
   }
 
+  // A big New York arena in the style of the Garden: a two-tier bowl of fans, the round
+  // spoked ceiling, and a center-hung scoreboard over center court. No names or logos.
+  buildGarden(rnd) {
+    const g = (this.surround = new THREE.Group());
+    const cz = W(250, 470).z; // center court
+    const crowdTex = () => {
+      const c = document.createElement('canvas'); c.width = 1024; c.height = 256;
+      const x = c.getContext('2d');
+      x.fillStyle = '#121318'; x.fillRect(0, 0, 1024, 256);
+      const shirts = ['#B8642A', '#1F5590', '#CFC9BE', '#26262B', '#6E675D', '#35577F', '#A39C91', '#6E2B2B', '#2F2F36'];
+      const skins = ['#D9B48F', '#B98257', '#80543A', '#53372A', '#C99A70'];
+      for (let r = 0; r < 16; r++) {
+        x.fillStyle = '#1B1C22'; x.fillRect(0, r * 16 + 12, 1024, 4);
+        for (let q = 0; q < 170; q++) {
+          if (rnd() < 0.22) continue;
+          const px = q * 6 + rnd() * 1.5, py = r * 16 + 3 + rnd() * 1.5;
+          x.fillStyle = shirts[Math.floor(rnd() * shirts.length)];
+          x.fillRect(px, py + 3, 4, 6);
+          x.fillStyle = skins[Math.floor(rnd() * skins.length)];
+          x.beginPath(); x.arc(px + 2, py + 1.5, 1.6, 0, Math.PI * 2); x.fill();
+        }
+      }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+      return t;
+    };
+    // Seating bowls: stepped lathe profiles, stretched into an oval around the full court.
+    const bowl = (r0, y0, rows, rise, run, repeatX) => {
+      const pts = [];
+      for (let i = 0; i <= rows; i++) { pts.push(new THREE.Vector2(r0 + i * run, y0 + i * rise)); pts.push(new THREE.Vector2(r0 + (i + 1) * run - 0.01, y0 + i * rise)); }
+      const geo = new THREE.LatheGeometry(pts, 96);
+      const t = crowdTex(); t.repeat.set(repeatX, rows / 16);
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: t, color: '#A9A9AE', roughness: 0.95, side: THREE.DoubleSide }));
+      m.scale.set(1, 1, 1.55);
+      m.position.set(0, 0, cz);
+      g.add(m);
+    };
+    bowl(12.5, 0.4, 22, 0.42, 0.78, 16);
+    bowl(31.5, 15.5, 20, 0.62, 0.8, 22);
+    // Fascia ring between the bowls
+    const fascia = new THREE.Mesh(new THREE.CylinderGeometry(31.3, 31.3, 1.4, 96, 1, true), new THREE.MeshStandardMaterial({ color: '#0B3F7A', emissive: '#0A3A72', emissiveIntensity: 0.6, side: THREE.DoubleSide }));
+    fascia.scale.set(1, 1, 1.55); fascia.position.set(0, 14.6, cz); g.add(fascia);
+    // Courtside floor and the dark arena surround
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 80), new THREE.MeshStandardMaterial({ color: '#15161B', roughness: 0.9 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.02, cz); floor.receiveShadow = true; g.add(floor);
+    // The round ceiling: concentric rings and radial spokes.
+    const cc = document.createElement('canvas'); cc.width = cc.height = 1024;
+    const cx = cc.getContext('2d');
+    const grd = cx.createRadialGradient(512, 512, 40, 512, 512, 512);
+    grd.addColorStop(0, '#3A4458'); grd.addColorStop(1, '#151820');
+    cx.fillStyle = grd; cx.fillRect(0, 0, 1024, 1024);
+    cx.strokeStyle = 'rgba(205,215,235,.55)'; cx.lineWidth = 3;
+    for (let k = 0; k < 48; k++) { const a = (k / 48) * Math.PI * 2; cx.beginPath(); cx.moveTo(512 + Math.cos(a) * 70, 512 + Math.sin(a) * 70); cx.lineTo(512 + Math.cos(a) * 510, 512 + Math.sin(a) * 510); cx.stroke(); }
+    for (const r of [70, 180, 300, 420, 505]) { cx.beginPath(); cx.arc(512, 512, r, 0, Math.PI * 2); cx.stroke(); }
+    for (let k = 0; k < 140; k++) { const a = rnd() * Math.PI * 2, r = 120 + rnd() * 380; cx.fillStyle = 'rgba(255,244,214,.9)'; cx.beginPath(); cx.arc(512 + Math.cos(a) * r, 512 + Math.sin(a) * r, 3, 0, Math.PI * 2); cx.fill(); }
+    const ct = new THREE.CanvasTexture(cc); ct.colorSpace = THREE.SRGBColorSpace;
+    const ceil = new THREE.Mesh(new THREE.CircleGeometry(50, 96), new THREE.MeshBasicMaterial({ map: ct, side: THREE.DoubleSide, fog: false }));
+    ceil.rotation.x = Math.PI / 2; ceil.scale.set(1, 1.3, 1); ceil.position.set(0, 34, cz); g.add(ceil);
+    // Center-hung scoreboard
+    const sc = document.createElement('canvas'); sc.width = 512; sc.height = 256;
+    const sx = sc.getContext('2d');
+    sx.fillStyle = '#05070B'; sx.fillRect(0, 0, 512, 256);
+    sx.fillStyle = '#F58426'; sx.fillRect(0, 0, 512, 10); sx.fillRect(0, 246, 512, 10);
+    sx.font = '800 96px Geist, Arial Black, sans-serif'; sx.textAlign = 'center'; sx.textBaseline = 'middle';
+    sx.fillStyle = '#FFFFFF'; sx.fillText('HOME', 128, 70); sx.fillText('AWAY', 384, 70);
+    sx.fillStyle = '#FFD25A'; sx.font = '800 110px Geist, Arial Black, sans-serif'; sx.fillText('88', 128, 170); sx.fillText('86', 384, 170);
+    const stx = new THREE.CanvasTexture(sc); stx.colorSpace = THREE.SRGBColorSpace;
+    const screen = new THREE.MeshBasicMaterial({ map: stx, fog: false });
+    const shell = new THREE.MeshStandardMaterial({ color: '#111216', metalness: 0.6, roughness: 0.4 });
+    const board = new THREE.Mesh(new THREE.BoxGeometry(7, 4, 5), [screen, screen, shell, shell, screen, screen]);
+    board.position.set(0, 17, cz); g.add(board);
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 0.9, 48, 1, true), new THREE.MeshBasicMaterial({ color: '#0B5CAD', side: THREE.DoubleSide, fog: false }));
+    ring.position.set(0, 14.6, cz); g.add(ring);
+    for (const x of [-2.5, 2.5]) { const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 15, 6), shell); wire.position.set(x, 26.5, cz); g.add(wire); }
+    this.scene.add(g);
+  }
+
   // Net swish: stretches and sways when the ball drops through, then settles.
   animateNet(dt) {
     const b = this.ball.position;
@@ -458,19 +535,19 @@ export class CourtScene {
       this.scene.add(this.floor);
     }
     this.floor.material.roughness = look.floor === 'blacktop' ? 0.95 : 0.55;
-    const park = look.scene === 'park';
-    const bg = look.scene === 'arena' ? '#16171B' : park ? '#BFD6EA' : '#E9E3D9';
+    const park = look.scene === 'park', garden = look.scene === 'garden';
+    const bg = look.scene === 'arena' || garden ? '#0D0E12' : park ? '#BFD6EA' : '#E9E3D9';
     this.scene.background.set(bg);
     this.scene.fog.color.set(park ? '#C9D8E4' : bg);
-    this.scene.fog.near = park ? 45 : 30;
-    this.scene.fog.far = park ? 170 : 60;
-    this.hemi.intensity = look.scene === 'arena' ? 0.8 : park ? 1.1 : 1.25;
+    this.scene.fog.near = park ? 45 : garden ? 60 : 30;
+    this.scene.fog.far = park ? 170 : garden ? 140 : 60;
+    this.hemi.intensity = look.scene === 'arena' ? 0.8 : garden ? 0.7 : park ? 1.1 : 1.25;
     this.hemi.color.set(park ? '#DCEBFF' : '#FFF8EE');
     this.hemi.groundColor.set(park ? '#6F7A5E' : '#8C7A66');
-    this.key.intensity = look.scene === 'arena' ? 2.6 : park ? 2.6 : 2.1;
+    this.key.intensity = look.scene === 'arena' ? 2.6 : garden ? 3.0 : park ? 2.6 : 2.1;
     this.key.color.set(park ? '#FFF1DC' : '#FFFFFF');
     this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
-    this.host.parentElement.classList.toggle('arena', look.scene === 'arena');
+    this.host.parentElement.classList.toggle('arena', look.scene === 'arena' || garden);
     this.setSurroundings(look.scene);
   }
 
