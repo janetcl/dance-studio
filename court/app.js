@@ -1,14 +1,14 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene } from './scene.js?v=20261113h';
-import { PRESETS } from './plays.js?v=20261113h';
+import { CourtScene } from './scene.js?v=20261113k';
+import { PRESETS } from './plays.js?v=20261113k';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261113h';
-import { Recorder, pickMime, cinematicCamera } from './recorder.js?v=20261113h';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261113h';
+} from './model.js?v=20261113k';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261113k';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261113k';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -451,7 +451,7 @@ function frame(nowMs) {
     R.t += dt;
     if (!R.started && R.t >= R.lead) { R.started = true; ui.T = 0; ui.snap = true; setPlaying(true); }
     if (R.started && ui.T >= total) { R.tail += dt; if (R.tail > 1.4 && !R.finishing) finishExport(); }
-    if (R.opts.camera === 'cinematic') cinematicCamera(scene.camera, scene.controls.target, R.t);
+    if (R.opts.camera === 'cinematic') cinematicCamera(scene.camera, scene.controls.target, R.t, R.opts.q.w / R.opts.q.h);
     const st = $('rec-time'); if (st) st.textContent = `${Math.min(R.t, R.total).toFixed(1)} / ${R.total.toFixed(1)} s`;
   }
   if (ui.playing) {
@@ -597,6 +597,18 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.name === 'codec') {
+    $('codec-help').textContent = t.value === 'hevc' ? 'About half the file size for the same picture. Plays on iPhone, Mac and Instagram, but not on every Windows PC, Android phone or browser.' : 'Plays everywhere: phones, computers, Instagram, iMessage.';
+    return;
+  }
+  if (t.name === 'format') {
+    $('format-help').textContent = { landscape: 'Widescreen, for YouTube, laptops and TVs.', square: 'Square, for an Instagram or LinkedIn feed post.', vertical: 'Tall 9:16, for Instagram Reels, TikTok and YouTube Shorts. The camera sits higher so the court fills the frame, and the captions stay clear of the app buttons.' }[t.value];
+    return;
+  }
+  if (t.name === 'quality') {
+    $('quality-help').textContent = { '720': 'Smallest file. Fine for texting or a quick look.', '1080': 'Full HD. Sharp on any screen and a good size to share.', '1440': 'Extra sharp, larger file.', '2160': 'Sharpest, biggest file. Needs a fast computer; on a slow one the video can stutter.' }[t.value];
+    return;
+  }
   if (t.name === 'camera') {
     $('camera-help').textContent = t.value === 'cinematic'
       ? 'Cinematic starts straight above the court, sweeps down to a broadcast angle as the play begins, then slowly circles while it runs.'
@@ -743,7 +755,9 @@ async function share() {
 
 // ---------- Export a video ----------
 function openExport() {
-  const mime = pickMime();
+  const q = QUALITIES[(new FormData($('export-form'))).get('quality') || '1080'];
+  const mime = pickMime(q);
+  $('codec-field').hidden = !hevcMime(q);
   $('export-note').textContent = mime
     ? `Plays the whole play once in real time while it records (about ${Math.round(timing(play).total + 3)} seconds), then downloads ${mime.includes('mp4') ? 'an MP4' : 'a WebM'} file. Keep this tab open until it finishes.`
     : 'This browser can’t record video. Try Chrome, Edge or Safari on a computer.';
@@ -752,20 +766,28 @@ function openExport() {
 }
 function startExport() {
   const fd = new FormData($('export-form'));
-  const opts = { camera: fd.get('camera'), captions: fd.get('captions') === 'on', numbers: fd.get('numbers') === 'on' };
+  const q = videoSize(fd.get('quality') || '1080', fd.get('format') || 'landscape');
+  const opts = { format: fd.get('format') || 'landscape', camera: fd.get('camera'), captions: fd.get('captions') === 'on', numbers: fd.get('numbers') === 'on', q };
   $('export').close();
   closePops();
-  const mime = pickMime();
+  const mime = pickMime(q, fd.get('codec') || 'h264');
   if (!mime) return;
   setPlaying(false);
   ui.sel = null;
   ui.T = 0; ui.snap = true; ui.beat = -1; ui.endHold = 0;
-  const recorder = new Recorder(scene);
+  const recorder = new Recorder(scene, q);
+  scene.setRecordSize(q);
   const lead = opts.camera === 'cinematic' ? 1.4 : 0.8;
   ui.rec = { opts, recorder, t: 0, tail: 0, lead, started: false, total: lead + timing(play).total + 1.4, saved: { loop: ui.loop, damping: scene.controls.enableDamping, cam: scene.camera.position.clone(), target: scene.controls.target.clone() } };
   ui.loop = false;
   scene.controls.enableDamping = false;
   scene.controls.enabled = false;
+  if (opts.format === 'vertical' && opts.camera === 'static') {
+    // A higher camera so the half court fills a tall frame.
+    scene.camera.position.set(0, 13.2, 6.4);
+    scene.controls.target.set(0, 0, -2.6);
+    scene.camera.lookAt(scene.controls.target);
+  }
   $('app').classList.add('recording');
   $('rec-status').hidden = false;
   renderAll();
@@ -775,6 +797,7 @@ function restoreAfterExport() {
   const R = ui.rec;
   ui.rec = null;
   ui.loop = R.saved.loop;
+  scene.setRecordSize(null);
   scene.controls.enableDamping = R.saved.damping;
   scene.controls.enabled = true;
   scene.camera.position.copy(R.saved.cam);
@@ -793,7 +816,7 @@ async function finishExport() {
   const name = (play.name || 'play').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'play';
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${name}${R.opts.camera === 'cinematic' ? '-cinematic' : ''}.${ext}`;
+  a.download = `${name}${R.opts.camera === 'cinematic' ? '-cinematic' : ''}${R.opts.format === 'landscape' ? '' : '-' + R.opts.format}-${R.opts.q.label}.${ext}`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
   toast(`Saved ${a.download}`);

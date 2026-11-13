@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261113h';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113h';
+import { Player } from './players.js?v=20261113k';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113k';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -588,7 +588,24 @@ export class CourtScene {
     this.view = name;
   }
 
+  // While exporting, render at the video's exact size instead of the on-screen size.
+  setRecordSize(size) {
+    this.recordSize = size;
+    if (size) {
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(size.w, size.h, false);
+      const a = size.w / size.h, hfov = 2 * Math.atan(Math.tan((18 * Math.PI) / 180) * (a >= 1.6 ? 1.6 : 1.25));
+      this.camera.aspect = a;
+      this.camera.fov = a >= 1.6 ? 36 : Math.min(80, (2 * Math.atan(Math.tan(hfov / 2) / a) * 180) / Math.PI);
+      this.camera.updateProjectionMatrix();
+    } else {
+      this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      this.resize();
+    }
+  }
+
   resize() {
+    if (this.recordSize) return;
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);

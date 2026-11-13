@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="court.css?v=20261113h" />
+  <link rel="stylesheet" href="court.css?v=20261113k" />
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "../vendor/" } }
   </script>
@@ -188,6 +188,30 @@
           <p class="help" id="camera-help">Static keeps the camera exactly where it is now, like a coach's view of the whole play.</p>
       </div>
       </div>
+      <div class="field"><span>Format</span>
+        <div class="seg sizes" role="radiogroup" aria-label="Format">
+          <label><input type="radio" name="format" value="landscape" checked />Landscape 16:9</label>
+          <label><input type="radio" name="format" value="square" />Square 1:1</label>
+          <label><input type="radio" name="format" value="vertical" />Reels 9:16</label>
+        </div>
+        <p class="help" id="format-help">Widescreen, for YouTube, laptops and TVs.</p>
+      </div>
+      <div class="field"><span>Quality</span>
+        <div class="seg sizes" role="radiogroup" aria-label="Quality">
+          <label><input type="radio" name="quality" value="720" />720p</label>
+          <label><input type="radio" name="quality" value="1080" checked />1080p</label>
+          <label><input type="radio" name="quality" value="1440" />1440p</label>
+          <label><input type="radio" name="quality" value="2160" />4K</label>
+        </div>
+        <p class="help" id="quality-help">Full HD. Sharp on any screen and a good size to share.</p>
+      </div>
+      <div class="field" id="codec-field" hidden><span>Encoding</span>
+        <div class="seg sizes" role="radiogroup" aria-label="Encoding">
+          <label><input type="radio" name="codec" value="h264" checked />H.264 · plays everywhere</label>
+          <label><input type="radio" name="codec" value="hevc" />H.265 · smaller file</label>
+        </div>
+        <p class="help" id="codec-help">Plays everywhere: phones, computers, Instagram, iMessage.</p>
+      </div>
       <label class="row field-check"><input type="checkbox" name="captions" checked /> Beat captions</label>
       <label class="row field-check"><input type="checkbox" name="numbers" checked /> Player numbers</label>
       <p class="note" id="export-note"></p>
@@ -199,6 +223,6 @@
   </dialog>
   <div class="rec-status" id="rec-status" hidden role="status"><span class="rec-dot"></span>Recording <span id="rec-time"></span><button class="btn small" data-action="export-cancel">Cancel</button></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261113h"></script>
+  <script type="module" src="app.js?v=20261113k"></script>
 </body>
 </html>
