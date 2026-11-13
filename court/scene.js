@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261113o';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113o';
+import { Player } from './players.js?v=20261113r';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261113r';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -182,7 +182,7 @@ export class CourtScene {
     const scene = (this.scene = new THREE.Scene());
     scene.background = new THREE.Color('#E9E3D9');
     scene.fog = new THREE.Fog('#E9E3D9', 30, 60);
-    this.camera = new THREE.PerspectiveCamera(36, 1, 0.1, 200);
+    this.camera = new THREE.PerspectiveCamera(36, 1, 0.1, 700);
     const c = (this.controls = new OrbitControls(this.camera, r.domElement));
     c.enableDamping = true;
     c.maxPolarAngle = Math.PI * 0.47;
@@ -433,38 +433,71 @@ export class CourtScene {
     // Sunset sky
     const sky = new THREE.Mesh(new THREE.SphereGeometry(300, 40, 20), new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, fog: false }));
     const pa = sky.geometry.attributes.position, cols = [];
-    const stops = [[0, '#FFC977'], [0.06, '#FF9A6B'], [0.16, '#E86C7A'], [0.32, '#8A5A9C'], [0.6, '#3B3F86'], [1, '#1F2A5C']].map(([t, c]) => [t, new THREE.Color(c)]);
+    const stops = [[0, '#FFD27A'], [0.03, '#FFA25E'], [0.09, '#FF7A5C'], [0.18, '#D9507A'], [0.3, '#8E3F8C'], [0.5, '#4A2F78'], [0.75, '#24245A'], [1, '#141836']].map(([t, c]) => [t, new THREE.Color(c)]);
     for (let i = 0; i < pa.count; i++) {
       const y = Math.max(0, pa.getY(i) / 300);
       let c = stops[stops.length - 1][1].clone();
       for (let k = 0; k < stops.length - 1; k++) if (y <= stops[k + 1][0]) { c = stops[k][1].clone().lerp(stops[k + 1][1], (y - stops[k][0]) / (stops[k + 1][0] - stops[k][0])); break; }
       // Warmer toward the sun (behind the basket, -z).
       const toward = Math.max(0, -pa.getZ(i) / 300);
-      c.lerp(new THREE.Color('#FFB35C'), toward * Math.max(0, 0.35 - y) * 1.2);
+      const side = 1 - Math.min(1, Math.abs(pa.getX(i) / 300 + 0.12) * 1.6);
+      c.lerp(new THREE.Color('#FFC266'), toward * side * Math.max(0, 0.4 - y) * 1.6);
       cols.push(c.r, c.g, c.b);
     }
     sky.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     g.add(sky);
-    // Sun, half set
-    const sun = new THREE.Mesh(new THREE.CircleGeometry(14, 48), new THREE.MeshBasicMaterial({ color: '#FFE0A0', fog: false }));
-    sun.position.set(18, 6, -250); g.add(sun);
-    const glow = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshBasicMaterial({ color: '#FFB86B', transparent: true, opacity: 0.35, fog: false }));
-    glow.position.set(18, 6, -251); g.add(glow);
-    // Ocean with a glitter path toward the sun
+    // Sun low on the horizon, with layered glow (additive, so it blooms over the sky).
+    const add = (geo, color, opacity, pos, scale = [1, 1, 1]) => {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      m.position.set(...pos); m.scale.set(...scale); g.add(m); return m;
+    };
+    const SX = -30, SY = 6.5, SZ = -255;
+    const sun = new THREE.Mesh(new THREE.CircleGeometry(9, 64), new THREE.MeshBasicMaterial({ color: '#FFF1C8', fog: false }));
+    sun.position.set(SX, SY, SZ); g.add(sun);
+    add(new THREE.CircleGeometry(15, 64), '#FFC870', 0.5, [SX, SY, SZ - 1]);
+    add(new THREE.CircleGeometry(32, 64), '#FF9A55', 0.24, [SX, SY, SZ - 2]);
+    add(new THREE.CircleGeometry(110, 64), '#FF7A50', 0.14, [SX, SY - 4, SZ - 3], [1.6, 0.7, 1]);
+    // Streaky clouds, lit from below
+    const cloudTex = (() => {
+      const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+      const x = c.getContext('2d');
+      const gr = x.createLinearGradient(0, 0, 0, 64);
+      gr.addColorStop(0, 'rgba(120,70,140,0)'); gr.addColorStop(0.45, 'rgba(255,170,150,.9)'); gr.addColorStop(0.75, 'rgba(255,205,140,1)'); gr.addColorStop(1, 'rgba(255,205,140,0)');
+      x.fillStyle = gr; x.fillRect(0, 0, 256, 64);
+      const fade = x.createLinearGradient(0, 0, 256, 0);
+      fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(0.2, 'rgba(0,0,0,0)'); fade.addColorStop(0.8, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+      x.globalCompositeOperation = 'destination-out'; x.fillStyle = fade; x.fillRect(0, 0, 256, 64);
+      return new THREE.CanvasTexture(c);
+    })();
+    for (const [x, y, w, h, o] of [[-90, 30, 130, 7, 0.75], [10, 38, 160, 6, 0.6], [-20, 22, 90, 4, 0.8], [70, 27, 120, 5, 0.65], [-140, 44, 150, 8, 0.5], [120, 48, 180, 9, 0.45], [-50, 15, 70, 3, 0.85], [40, 17, 60, 2.5, 0.8]]) {
+      const cl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, opacity: o, depthWrite: false, fog: false }));
+      cl.position.set(x, y, -240); g.add(cl);
+    }
+    // Ocean
     const oc = document.createElement('canvas'); oc.width = 512; oc.height = 512;
     const ox = oc.getContext('2d');
     const og = ox.createLinearGradient(0, 0, 0, 512);
-    og.addColorStop(0, '#5E4F7E'); og.addColorStop(0.35, '#2F5E86'); og.addColorStop(1, '#1D6E80');
+    og.addColorStop(0, '#7A4A78'); og.addColorStop(0.25, '#3E4D82'); og.addColorStop(0.7, '#1E5A7A'); og.addColorStop(1, '#16666F');
     ox.fillStyle = og; ox.fillRect(0, 0, 512, 512);
-    for (let i = 0; i < 2600; i++) {
-      const y = Math.random() * 512, spread = 20 + y * 0.35, x = 256 + 18 / 512 * 512 * 0.15 + (Math.random() - 0.5) * spread;
-      ox.fillStyle = `rgba(255,${190 + Math.random() * 50},${120 + Math.random() * 60},${0.15 + Math.random() * 0.5 * (1 - y / 600)})`;
-      ox.fillRect(x, y, 4 + Math.random() * 10, 1.4);
-    }
-    for (let i = 0; i < 900; i++) { ox.fillStyle = `rgba(255,255,255,${Math.random() * 0.12})`; ox.fillRect(Math.random() * 512, Math.random() * 512, 6 + Math.random() * 14, 1); }
+    for (let i = 0; i < 1400; i++) { ox.fillStyle = `rgba(255,${170 + Math.random() * 60},${150 + Math.random() * 60},${Math.random() * 0.14})`; ox.fillRect(Math.random() * 512, Math.random() * 512, 6 + Math.random() * 16, 1); }
     const ot = new THREE.CanvasTexture(oc); ot.colorSpace = THREE.SRGBColorSpace;
-    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(700, 260), new THREE.MeshStandardMaterial({ map: ot, roughness: 0.25, metalness: 0.1 }));
+    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(700, 260), new THREE.MeshStandardMaterial({ map: ot, roughness: 0.2, metalness: 0.15 }));
     ocean.rotation.x = -Math.PI / 2; ocean.position.set(0, -0.06, -156); g.add(ocean);
+    // The sun's reflection: a shimmering path from the horizon to the shore.
+    const rc = document.createElement('canvas'); rc.width = 128; rc.height = 512;
+    const rx = rc.getContext('2d');
+    for (let i = 0; i < 2200; i++) {
+      const y = Math.random() * 512, t = y / 512;
+      const spread = 10 + t * 60, xx = 64 + (Math.random() - 0.5) * spread * (Math.random() < 0.7 ? 0.6 : 1.4);
+      rx.fillStyle = `rgba(255,${200 + Math.random() * 55},${150 + Math.random() * 70},${(1 - t * 0.6) * (0.25 + Math.random() * 0.6)})`;
+      rx.fillRect(xx, y, 3 + Math.random() * 12 * (1 - t * 0.5), 1.3);
+    }
+    const rt = new THREE.CanvasTexture(rc); rt.colorSpace = THREE.SRGBColorSpace;
+    const refl = new THREE.Mesh(new THREE.PlaneGeometry(46, 228), new THREE.MeshBasicMaterial({ map: rt, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    refl.rotation.x = -Math.PI / 2;
+    refl.position.set(SX * 0.55, -0.02, -140);
+    refl.rotation.z = Math.atan2(SX * 0.45, 230);
+    g.add(refl);
     // Shoreline foam and wet sand
     const foam = new THREE.Mesh(new THREE.PlaneGeometry(700, 1.2), new THREE.MeshBasicMaterial({ color: '#FFF4E6', transparent: true, opacity: 0.8 }));
     foam.rotation.x = -Math.PI / 2; foam.position.set(0, -0.03, -26.4); g.add(foam);
@@ -474,13 +507,13 @@ export class CourtScene {
     const sand = new THREE.Mesh(new THREE.PlaneGeometry(700, 200), new THREE.MeshStandardMaterial({ color: '#E2C79C', roughness: 1 }));
     sand.rotation.x = -Math.PI / 2; sand.position.set(0, -0.05, 76.9); sand.receiveShadow = true; g.add(sand);
     // A mountain on the horizon, Diamond Head style
-    const mtn = new THREE.Mesh(new THREE.ConeGeometry(48, 26, 7, 1), new THREE.MeshStandardMaterial({ color: '#5A4566', roughness: 1, flatShading: true }));
-    mtn.scale.set(1.6, 1, 0.8); mtn.position.set(-120, 9, -230); g.add(mtn);
-    const mtn2 = new THREE.Mesh(new THREE.ConeGeometry(30, 16, 6, 1), new THREE.MeshStandardMaterial({ color: '#6B5172', roughness: 1, flatShading: true }));
-    mtn2.position.set(-70, 5, -215); mtn2.scale.set(1.8, 1, 0.8); g.add(mtn2);
+    const mtn = new THREE.Mesh(new THREE.ConeGeometry(48, 26, 7, 1), new THREE.MeshBasicMaterial({ color: '#4A3358', fog: false }));
+    mtn.scale.set(1.5, 0.55, 0.8); mtn.position.set(-165, 5, -240); g.add(mtn);
+    const mtn2 = new THREE.Mesh(new THREE.ConeGeometry(30, 16, 6, 1), new THREE.MeshBasicMaterial({ color: '#5E3F66', fog: false }));
+    mtn2.position.set(-112, 3, -228); mtn2.scale.set(1.6, 0.5, 0.8); g.add(mtn2);
     // Palm trees
-    const trunkMat = new THREE.MeshStandardMaterial({ color: '#7A5A3E', roughness: 0.9 });
-    const frondMat = new THREE.MeshStandardMaterial({ color: '#3E6E3A', roughness: 0.8, side: THREE.DoubleSide });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: '#5E4636', roughness: 0.9 });
+    const frondMat = new THREE.MeshStandardMaterial({ color: '#2F4F33', roughness: 0.8, side: THREE.DoubleSide });
     const palm = (x, z, h, lean) => {
       const tree = new THREE.Group();
       const segs = 9;
@@ -631,18 +664,19 @@ export class CourtScene {
     }
     this.floor.material.roughness = look.floor === 'blacktop' ? 0.95 : 0.55;
     const park = look.scene === 'park', garden = look.scene === 'garden', beach = look.scene === 'beach';
-    const bg = look.scene === 'arena' || garden ? '#0D0E12' : park ? '#BFD6EA' : beach ? '#F2A877' : '#E9E3D9';
+    const bg = look.scene === 'arena' || garden ? '#0D0E12' : park ? '#BFD6EA' : beach ? '#E58A6E' : '#E9E3D9';
     this.scene.background.set(bg);
-    this.scene.fog.color.set(park ? '#C9D8E4' : beach ? '#F3B48C' : bg);
+    this.scene.fog.color.set(park ? '#C9D8E4' : beach ? '#F0A07E' : bg);
     this.scene.fog.near = park ? 45 : garden ? 60 : beach ? 70 : 30;
     this.scene.fog.far = park ? 170 : garden ? 140 : beach ? 260 : 60;
     this.hemi.intensity = look.scene === 'arena' ? 0.8 : garden ? 0.7 : park ? 1.1 : beach ? 1.0 : 1.25;
-    this.hemi.color.set(park ? '#DCEBFF' : beach ? '#FFD6B8' : '#FFF8EE');
+    this.hemi.color.set(park ? '#DCEBFF' : beach ? '#FFB6A6' : '#FFF8EE');
     this.hemi.groundColor.set(park ? '#6F7A5E' : beach ? '#B08A62' : '#8C7A66');
     this.key.intensity = look.scene === 'arena' ? 2.6 : garden ? 3.0 : park ? 2.6 : beach ? 2.5 : 2.1;
-    this.key.color.set(park ? '#FFF1DC' : beach ? '#FFB47A' : '#FFFFFF');
+    this.key.color.set(park ? '#FFF1DC' : beach ? '#FF9F5A' : '#FFFFFF');
+    this.renderer.toneMappingExposure = beach ? 1.12 : 1.0;
     // Beach: a low sun out over the water, behind the basket, so shadows stretch toward the camera.
-    if (beach) this.key.position.set(3, 6.5, -16); else this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
+    if (beach) this.key.position.set(-6, 4.2, -17); else this.key.position.set(park ? -8 : 6, 16, park ? 6 : 8);
     this.host.parentElement.classList.toggle('arena', look.scene === 'arena' || garden);
     this.setSurroundings(look.scene);
   }
