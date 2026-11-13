@@ -2,8 +2,8 @@
 // and picking/dragging. Positions come in as court units (see model.js).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { Player } from './players.js?v=20261115n';
-import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115n';
+import { Player } from './players.js?v=20261115o';
+import { THEMES, TEAMS, FLOORS, RIM as RIM_UV } from './model.js?v=20261115o';
 
 const F = 0.03048;
 export const W = (u, v, y = 0) => new THREE.Vector3((u - 250) * F, y, (v - 235) * F);
@@ -1290,7 +1290,7 @@ export class CourtScene {
     if (this.userMoved && !this.recordSize) return;
     if (!this.userMoved) { this.camera.position.set(...v.pos); this.controls.target.set(...v.target); }
     this.camera.updateProjectionMatrix();
-    fitCamera(this.camera, this.controls.target, fitBox(this.camera.aspect, !!this.recordSize));
+    fitCamera(this.camera, this.controls.target, fitBox(this.camera.aspect, !!this.recordSize && !this.recordSize.clean));
   }
 
   // While exporting, render at the video's exact size instead of the on-screen size.

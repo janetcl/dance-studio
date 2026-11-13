@@ -1,16 +1,16 @@
 // Court Mode editor: beats on the left, the 3D court in the middle, the inspector on
 // the right and the beat timeline at the bottom.
-import { CourtScene, W } from './scene.js?v=20261115n';
-import { QUIZ } from './quiz.js?v=20261115n';
+import { CourtScene, W } from './scene.js?v=20261115o';
+import { QUIZ } from './quiz.js?v=20261115o';
 import * as THREE from 'three';
-import { PRESETS } from './plays.js?v=20261115n';
+import { PRESETS } from './plays.js?v=20261115o';
 import {
   THEMES, TEAMS, MATCHUPS, teamsOf, SKINS, HAIRS, STYLES, POSITIONS, PACES, ZONES, FLOORS, PAINTS, LINE_COLORS, BORDERS, courtLook, uid, clampUV, newPlay, validate, flipPlay,
   posAt, moveOf, holderAt, actionOf, timing, beatAt, sample, marksFor, thumbSVG,
   libraryIds, loadPlay, savePlay, deletePlay, lastId, savedAt, encodeShare, decodeShare,
-} from './model.js?v=20261115n';
-import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115n';
-import { icon, hydrateIcons } from '../js/icons.js?v=20261115n';
+} from './model.js?v=20261115o';
+import { Recorder, pickMime, hevcMime, cinematicCamera, QUALITIES, videoSize } from './recorder.js?v=20261115o';
+import { icon, hydrateIcons } from '../js/icons.js?v=20261115o';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -991,7 +991,7 @@ function frame(nowMs) {
     R.t += dt;
     if (!R.started && R.t >= R.lead) { R.started = true; ui.T = 0; ui.snap = true; setPlaying(true); }
     if (R.started && ui.T >= total) { R.tail += dt; if (R.tail > 1.4 && !R.finishing) finishExport(); }
-    if (R.opts.camera === 'cinematic') cinematicCamera(scene.camera, scene.controls.target, R.t, R.opts.q.w / R.opts.q.h);
+    if (R.opts.camera === 'cinematic') cinematicCamera(scene.camera, scene.controls.target, R.t, R.opts.letterbox ? 1 : R.opts.q.w / R.opts.q.h, !!R.opts.letterbox);
     const st = $('rec-time'); if (st) st.textContent = `${Math.min(R.t, R.total).toFixed(1)} / ${R.total.toFixed(1)} s`;
   }
   if (ui.playing) {
@@ -1363,19 +1363,18 @@ function startExport() {
   ui.sel = null;
   ui.T = 0; ui.snap = true; ui.beat = -1; ui.endHold = 0;
   const recorder = new Recorder(scene, q);
-  scene.setRecordSize(q);
-  if (ui.mode === 'quiz' && ui.quiz) return startQuizExport(opts, mime, q, recorder);
+  const quizShort = ui.mode === 'quiz' && ui.quiz;
+  // 9:16 plays are letterboxed: the court renders square and the title and captions get their own bands.
+  const letterbox = opts.format === 'vertical' && !quizShort;
+  recorder.letterbox = letterbox;
+  opts.letterbox = letterbox;
+  scene.setRecordSize(letterbox ? { w: q.w, h: q.w, clean: true } : q);
+  if (quizShort) return startQuizExport(opts, mime, q, recorder);
   const lead = opts.camera === 'cinematic' ? 1.4 : 0.8;
   ui.rec = { opts, recorder, t: 0, tail: 0, lead, started: false, total: lead + timing(play).total + 1.4, saved: { loop: ui.loop, damping: scene.controls.enableDamping, cam: scene.camera.position.clone(), target: scene.controls.target.clone() } };
   ui.loop = false;
   scene.controls.enableDamping = false;
   scene.controls.enabled = false;
-  if (opts.format === 'vertical' && opts.camera === 'static') {
-    // A higher camera so the half court fills a tall frame.
-    scene.camera.position.set(0, 13.2, 6.4);
-    scene.controls.target.set(0, 0, -2.6);
-    scene.camera.lookAt(scene.controls.target);
-  }
   $('app').classList.add('recording');
   $('labels').hidden = true;
   $('rec-status').hidden = false;

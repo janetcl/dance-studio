@@ -2,7 +2,7 @@
 // onto a 1280×720 canvas with the number tags and beat captions drawn on top, and
 // MediaRecorder turns that canvas into an MP4 (or WebM where MP4 isn't supported).
 import * as THREE from 'three';
-import { fitCamera, fitBox } from './scene.js?v=20261115n';
+import { fitCamera, fitBox } from './scene.js?v=20261115o';
 
 // Overlays are laid out on a 1280×720 grid and scaled to the chosen size.
 const W = 1280, H = 720;
@@ -81,37 +81,76 @@ export class Recorder {
   stop() { if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); return this.done; }
   cancel() { if (this.rec && this.rec.state !== 'inactive') { this.rec.onstop = null; this.rec.stop(); } this.rec = null; }
 
-  // Branded corner badge: a little ball mark, the name, and where to find it.
+  // Quiet brand mark: a small ball, the name and the address, no box. Top right on landscape and
+  // square; centered at yAt on vertical quiz Shorts.
   badge(g, W, H, vertical, yAt) {
     g.save();
-    g.font = '700 17px Geist, Inter, system-ui, sans-serif';
-    const name = 'Court Mode';
-    g.font = '500 13px Geist, Inter, system-ui, sans-serif';
-    const url = 'janetlee.me/dance-studio/court';
-    const uw = g.measureText(url).width;
-    g.font = '700 17px Geist, Inter, system-ui, sans-serif';
-    const nw = g.measureText(name).width;
-    const bw = 18 + 30 + 10 + Math.max(nw, uw) + 18, bh = 54;
-    // Landscape and square: top right, opposite the title. Vertical: under the title, clear of the Reels top bar.
-    const x = vertical ? (W - bw) / 2 : W - bw - 22, y = yAt !== undefined ? yAt : vertical ? H * 0.12 + 118 : 22;
-    roundRect(g, x, y, bw, bh, 27);
-    g.fillStyle = 'rgba(15,14,13,.72)'; g.fill();
-    g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.14)'; g.stroke();
-    // Ball mark
-    const cx = x + 18 + 15, cy = y + bh / 2, r = 15;
-    const grd = g.createRadialGradient(cx - 5, cy - 5, 2, cx, cy, r);
-    grd.addColorStop(0, '#F7A15C'); grd.addColorStop(1, '#D6561C');
-    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = grd; g.fill();
-    g.strokeStyle = 'rgba(40,20,10,.85)'; g.lineWidth = 1.6;
-    g.beginPath(); g.moveTo(cx - r, cy); g.lineTo(cx + r, cy); g.stroke();
-    g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx, cy + r); g.stroke();
-    g.beginPath(); g.arc(cx - r * 1.05, cy, r * 0.75, -0.95, 0.95); g.stroke();
-    g.beginPath(); g.arc(cx + r * 1.05, cy, r * 0.75, Math.PI - 0.95, Math.PI + 0.95); g.stroke();
-    // Words
+    const name = 'Court Mode', url = 'janetlee.me/dance-studio/court';
+    g.font = '700 15px Geist, Inter, system-ui, sans-serif'; const nw = g.measureText(name).width;
+    g.font = '500 11.5px Geist, Inter, system-ui, sans-serif'; const uw = g.measureText(url).width;
+    const r = 10, bw = r * 2 + 8 + Math.max(nw, uw);
+    const x = vertical ? (W - bw) / 2 : W - bw - 22, y = yAt !== undefined ? yAt : 20;
+    g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 8; g.shadowOffsetY = 1;
+    g.globalAlpha = 0.9;
+    ballMark(g, x + r, y + 16, r);
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-    g.fillStyle = '#FFFFFF'; g.fillText(name, cx + r + 12, y + 24);
-    g.font = '500 13px Geist, Inter, system-ui, sans-serif';
-    g.fillStyle = '#FFB37A'; g.fillText(url, cx + r + 12, y + 42);
+    g.font = '700 15px Geist, Inter, system-ui, sans-serif'; g.fillStyle = '#FFFFFF'; g.fillText(name, x + r * 2 + 8, y + 16);
+    g.font = '500 11.5px Geist, Inter, system-ui, sans-serif'; g.fillStyle = '#F4D2B5'; g.fillText(url, x + r * 2 + 8, y + 31);
+    g.restore();
+  }
+
+  // Player number tags, projected from the 3D scene into the frame.
+  drawNumbers(g, kits, toX, toY) {
+    const v = new THREE.Vector3();
+    g.font = '700 20px Geist, Inter, system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const x of this.scene.people.values()) {
+      if (!x.root.visible) continue;
+      v.set(x.root.position.x, 2.05 * (x.look.height || 1) + x.root.position.y, x.root.position.z).project(this.scene.camera);
+      if (v.z > 1) continue;
+      const px = toX(v.x), py = toY(v.y) - 14;
+      const text = x.tag.textContent;
+      const tw = g.measureText(text).width + 18;
+      const kit = kits[x.side];
+      roundRect(g, px - tw / 2, py - 14, tw, 28, 14);
+      g.fillStyle = kit.jersey; g.fill();
+      g.lineWidth = 2.5; g.strokeStyle = 'rgba(255,255,255,.92)'; g.stroke();
+      g.fillStyle = kit.num; g.fillText(text, px, py + 1);
+    }
+  }
+
+  // 9:16 plays: a square court shot in the middle, the title in the band above, the beat caption
+  // in the band below, so nothing sits on top of the play.
+  frameLetterbox({ caption, beatLabel, kits }) {
+    const W = this.W, H = this.H, g = this.g, src = this.scene.renderer.domElement;
+    g.setTransform(this.q.w / W, 0, 0, this.q.h / H, 0, 0);
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1C1A17'); bg.addColorStop(1, '#0F0E0C');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const top = Math.round(H * 0.215), size = W;
+    g.drawImage(src, 0, 0, src.width, src.height, 0, top, size, size);
+    if (this.opts.numbers) { g.save(); g.beginPath(); g.rect(0, top, W, size); g.clip(); this.drawNumbers(g, kits, (n) => ((n + 1) / 2) * W, (n) => top + ((1 - n) / 2) * size); g.restore(); }
+    // Top band: a quiet brand line under the Reels top bar, then the title.
+    g.save();
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    g.font = '600 13px Geist, Inter, system-ui, sans-serif';
+    const brand = 'COURT MODE  ·  janetlee.me/dance-studio/court';
+    const bw = g.measureText(brand).width;
+    ballMark(g, (W - bw) / 2 - 14, 118 - 4.5, 8);
+    g.fillStyle = 'rgba(244,236,226,.62)'; g.fillText(brand, W / 2 + 4, 118);
+    if (this.opts.title) {
+      g.font = '400 50px "Instrument Serif", Georgia, serif';
+      const lines = wrap(g, this.opts.title, W - 72, 2);
+      const lh = 50, y0 = top - 28 - (lines.length - 1) * lh;
+      g.fillStyle = '#FFFFFF'; lines.forEach((l, i) => g.fillText(l, W / 2, y0 + i * lh));
+    }
+    // Bottom band: the beat, right under the court and clear of where Reels puts its caption.
+    if (this.opts.captions && caption) {
+      const y = top + size + 44;
+      g.textAlign = 'left';
+      g.font = '700 23px Geist, Inter, system-ui, sans-serif'; g.fillStyle = '#FFB37A'; g.fillText(beatLabel, 36, y);
+      g.font = '500 20px Geist, Inter, system-ui, sans-serif'; g.fillStyle = '#E9E1D6';
+      wrap(g, caption, W - 72, 3).forEach((l, i) => g.fillText(l, 36, y + 32 + i * 27));
+    }
     g.restore();
   }
 
@@ -221,6 +260,7 @@ export class Recorder {
   // Called right after the scene renders.
   frame({ caption, beatLabel, kits, elapsed, quiz }) {
     const W = this.W, H = this.H, vertical = H > W;
+    if (this.letterbox && vertical && !quiz) { this.frameLetterbox({ caption, beatLabel, kits }); return; }
     const g = this.g, src = this.scene.renderer.domElement;
     const sw0 = src.width, sh0 = src.height;
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -234,24 +274,7 @@ export class Recorder {
     const toX = (ndc) => (((ndc + 1) / 2) * sw0 - sx) * k;
     const toY = (ndc) => (((1 - ndc) / 2) * sh0 - sy) * k;
 
-    if (this.opts.numbers) {
-      const v = new THREE.Vector3();
-      g.font = '700 20px Geist, Inter, system-ui, sans-serif';
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      for (const x of this.scene.people.values()) {
-        if (!x.root.visible) continue;
-        v.set(x.root.position.x, 2.05 * (x.look.height || 1) + x.root.position.y, x.root.position.z).project(this.scene.camera);
-        if (v.z > 1) continue;
-        const px = toX(v.x), py = toY(v.y) - 14;
-        const text = x.tag.textContent;
-        const tw = g.measureText(text).width + 18;
-        const kit = kits[x.side];
-        roundRect(g, px - tw / 2, py - 14, tw, 28, 14);
-        g.fillStyle = kit.jersey; g.fill();
-        g.lineWidth = 2.5; g.strokeStyle = 'rgba(255,255,255,.92)'; g.stroke();
-        g.fillStyle = kit.num; g.fillText(text, px, py + 1);
-      }
-    }
+    if (this.opts.numbers) this.drawNumbers(g, kits, toX, toY);
 
     // Title in the first seconds, a small credit at the end corner.
     // Quiz Shorts: badge first, just inside the safe area, and the quiz cards start below it.
@@ -264,36 +287,48 @@ export class Recorder {
       const tw = g.measureText(this.opts.title).width;
       // Vertical video: keep clear of the app's top bar (about the top 12%).
       const tx = vertical ? (W - Math.min(tw + 48, W - 48)) / 2 : 32, ty = vertical ? H * 0.12 : 30;
-      roundRect(g, tx, ty, Math.min(tw + 48, W - 48), 104, 16);
-      g.fillStyle = 'rgba(15,14,13,.78)'; g.fill();
-      g.fillStyle = '#FFFFFF'; g.fillText(this.opts.title, tx + 24, ty + 62, W - 96);
-      g.font = '600 15px Geist, Inter, system-ui, sans-serif';
-      g.fillStyle = '#FFB37A'; g.fillText('A PLAY IN BEATS', tx + 25, ty + 88);
+      roundRect(g, tx, ty, Math.min(tw + 48, W - 48), 80, 16);
+      g.fillStyle = 'rgba(15,14,13,.72)'; g.fill();
+      g.fillStyle = '#FFFFFF'; g.fillText(this.opts.title, tx + 24, ty + 58, W - 96);
       g.globalAlpha = 1;
     }
     this.badge(g, W, H, vertical);
 
     if (this.opts.captions && caption) {
       g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-      g.font = '500 20px Geist, Inter, system-ui, sans-serif';
-      const boxW = Math.min(920, W - 56);
-      const lines = wrap(g, caption, boxW - 60);
-      const boxH = 52 + lines.length * 26;
-      // Vertical video: sit above the bottom fifth, where Reels puts its caption and buttons.
-      const x0 = (W - boxW) / 2, y0 = vertical ? H * 0.74 - boxH : H - boxH - 44;
-      roundRect(g, x0, y0, boxW, boxH, 14);
-      g.fillStyle = 'rgba(15,14,13,.82)'; g.fill();
-      g.font = '700 22px Geist, Inter, system-ui, sans-serif';
-      g.fillStyle = '#FFFFFF'; g.fillText(beatLabel, x0 + 24, y0 + 36);
-      g.font = '500 20px Geist, Inter, system-ui, sans-serif';
-      g.fillStyle = '#E4DDD2';
-      lines.forEach((l, i) => g.fillText(l, x0 + 24, y0 + 64 + i * 26));
+      // One compact strip along the bottom edge: the beat name, then what happens.
+      g.font = '500 18px Geist, Inter, system-ui, sans-serif';
+      const boxW = Math.min(980, W - 40);
+      g.font = '700 18px Geist, Inter, system-ui, sans-serif'; const lw = g.measureText(beatLabel).width + 18;
+      g.font = '500 18px Geist, Inter, system-ui, sans-serif';
+      const lines = wrap(g, caption, boxW - 40 - lw, 2);
+      const boxH = 22 + lines.length * 24;
+      const x0 = (W - boxW) / 2, y0 = vertical ? H * 0.74 - boxH : H - boxH - 14;
+      roundRect(g, x0, y0, boxW, boxH, 12);
+      g.fillStyle = 'rgba(15,14,13,.74)'; g.fill();
+      g.font = '700 18px Geist, Inter, system-ui, sans-serif';
+      g.fillStyle = '#FFB37A'; g.fillText(beatLabel, x0 + 20, y0 + 28);
+      g.font = '500 18px Geist, Inter, system-ui, sans-serif';
+      g.fillStyle = '#EDE6DB';
+      lines.forEach((l, i) => g.fillText(l, x0 + 20 + lw, y0 + 28 + i * 24));
     }
   }
 }
 
 // The cinematic camera: straight down from above, sweep into a low broadcast angle, then a slow orbit.
-export function cinematicCamera(camera, target, t, aspect = 16 / 9) {
+function ballMark(g, cx, cy, r) {
+  const grd = g.createRadialGradient(cx - r / 3, cy - r / 3, 1, cx, cy, r);
+  grd.addColorStop(0, '#F7A15C'); grd.addColorStop(1, '#D6561C');
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = grd; g.fill();
+  g.save(); g.shadowBlur = 0; g.strokeStyle = 'rgba(40,20,10,.85)'; g.lineWidth = Math.max(1, r / 9);
+  g.beginPath(); g.moveTo(cx - r, cy); g.lineTo(cx + r, cy); g.stroke();
+  g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx, cy + r); g.stroke();
+  g.beginPath(); g.arc(cx - r * 1.05, cy, r * 0.75, -0.95, 0.95); g.stroke();
+  g.beginPath(); g.arc(cx + r * 1.05, cy, r * 0.75, Math.PI - 0.95, Math.PI + 0.95); g.stroke();
+  g.restore();
+}
+
+export function cinematicCamera(camera, target, t, aspect = 16 / 9, clean = false) {
   const tall = aspect < 1;
   const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
   const k = ease((t - 0.5) / 2.9);
@@ -307,7 +342,7 @@ export function cinematicCamera(camera, target, t, aspect = 16 / 9) {
   camera.lookAt(target);
   // As the swoop lands, ease into a framing that never cuts off the three-point line.
   const designed = camera.position.clone();
-  fitCamera(camera, target, fitBox(aspect, true));
+  fitCamera(camera, target, fitBox(aspect, !clean));
   camera.position.lerpVectors(designed, camera.position, k);
   camera.lookAt(target);
 }
